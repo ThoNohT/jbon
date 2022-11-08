@@ -1,22 +1,19 @@
 module Main (main) where
 
-import Data.Map (Map)
+import Json (parseJsonValue)
 
--- | A type the wraps all possible values that can exist inside a json document.
-data JsonValue where
-  JsonObj :: Map String JsonValue -> JsonValue
-  JsonArr :: [JsonValue] -> JsonValue
-  JsonStr :: String -> JsonValue
-  JsonNum :: JsonNumber -> JsonValue
-  JsonBool :: Bool -> JsonValue
-  JsonNull :: JsonValue
-  deriving (Eq, Show)
-
--- | For convenience, a json number is separated into decimals and integers, based on whether there is a decimal separator.
-data JsonNumber where
-  JsonDecimal :: Integer -> Integer -> JsonNumber
-  JsonInt :: Integer -> JsonNumber
-  deriving (Eq, Show)
-
+-- Json parsers.
 main :: IO ()
-main = putStrLn "Hello, Bson!"
+main = do
+  print $ parseJsonValue "null"
+  print $ parseJsonValue "true"
+  print $ parseJsonValue "false"
+  print $ parseJsonValue "13"
+  print $ parseJsonValue "13.342"
+  print $ parseJsonValue "\"Some \\a string\\\"\""
+  print $ parseJsonValue "\"\""
+  print $ parseJsonValue "[13, 12.5, true, null, \"Hey!\", [false, true]]"
+  print $ parseJsonValue "[]"
+  print $ parseJsonValue "[null]"
+  print $ parseJsonValue "{}"
+  print $ parseJsonValue "{ test: 25, x: null,  five  : \"five\",  arr: [1,2,3, {}]  }"
