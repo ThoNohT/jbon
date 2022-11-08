@@ -1,0 +1,65 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.35.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           bson
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/ThoNohT/bson#readme>
+homepage:       https://github.com/ThoNohT/bson#readme
+bug-reports:    https://github.com/ThoNohT/bson/issues
+author:         ThoNohT
+maintainer:     e.c.p.bataille@gmail.com
+copyright:      2022 ThoNohT
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/ThoNohT/bson
+
+executable bson
+  main-is: Main.hs
+  other-modules:
+      Paths_bson
+  hs-source-dirs:
+      src
+  default-extensions:
+      DataKinds
+      DeriveFunctor
+      DeriveGeneric
+      DerivingVia
+      DisambiguateRecordFields
+      DuplicateRecordFields
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      LambdaCase
+      MonoLocalBinds
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NamedWildCards
+      OverloadedStrings
+      OverloadedLabels
+      PartialTypeSignatures
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      UndecidableInstances
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+  default-language: Haskell2010
