@@ -1,10 +1,15 @@
-module Bson (BsonObject (..), BsonValue (..), indexed, tryGetIndexedSubList) where
+module Bson (BsonObject (..), BsonValue (..), getObjectDefinitions, tryGetIndexedSubList, minify) where
 
-import Data.List (sortOn)
+import Core (Indexed, firstJust, indexed)
+import Data.List (nub, sortOn)
 import Json (JsonValue (..))
 
--- | Defines which fields are present in an object of this type.
-data BsonObject = BsonObject {inheritFrom :: Maybe Int, objectFields :: [(Int, String)]} deriving (Eq, Show)
+{- | Definition of a Bson object:
+ - From which object index it inherits.
+ - Which fields are present this object, besides the ones inherited.
+ - All fields present in this object.
+-}
+data BsonObject = BsonObject (Maybe Int) (Indexed String) [String] deriving (Eq, Show)
 
 -- | Indication of what type of value comes next.
 data BsonValue = BsonObj Int | BsonArr | BsonStr | BsonNum | BsonBool | BsonNull deriving (Eq, Show)
@@ -20,16 +25,29 @@ getObjectDefinitions = minify . extract
   extract (JsonArr elems) = concat $ extract <$> elems
   extract (JsonObj values) = (fst <$> values) : concat (extract <$> fmap snd values)
 
-minify :: [[String]] -> [(Int, BsonObject)]
-minify definitions = undefined
+{- | Given a list of property lists, converts a minimal list of BsonObjects, where each object tries to inherit from
+ | another object such that it minimizes its own introduced properties.
+-}
+minify :: [[String]] -> Indexed BsonObject
+minify definitions = makeOptimalObjects [] ordered
  where
-  ordered = reverse $ indexed 1 $ indexed 1 <$> sortOn length definitions
+  ordered = reverse $ indexed 1 $ indexed 1 <$> nub (sortOn length definitions)
+
+  -- Given a list of property lists, ordered by the number of properties descending, makes BsonObjects.
+  -- Starts at the biggest list of properties, and will always try to inherit from the biggest
+  -- list of properties to its right in the list.
+  makeOptimalObjects :: Indexed BsonObject -> Indexed (Indexed String) -> Indexed BsonObject
+  makeOptimalObjects acc = \case
+    [] -> reverse acc
+    ((i, x) : xs) -> case firstJust (\(j, l2) -> (j,) <$> tryGetIndexedSubList l2 x) xs of
+      Nothing -> makeOptimalObjects ((i, BsonObject Nothing x (snd <$> x)) : acc) xs
+      Just (j, subList) -> makeOptimalObjects ((i, BsonObject (Just j) subList (snd <$> x)) : acc) xs
 
 {- | Attempts to specify The first indexed list as an extension of the second indexed list.
  | The list of indexes will be the places where the fields should be inserted. If multiple entries with the same
  | index exist, they need to be inserted at that index (from the original list), in order.
 -}
-tryGetIndexedSubList :: [(Int, String)] -> [(Int, String)] -> Maybe [(Int, String)]
+tryGetIndexedSubList :: Indexed String -> Indexed String -> Maybe (Indexed String)
 tryGetIndexedSubList l1 l2 = reverse <$> go [] 0 (sortOn fst l1) (sortOn fst l2)
  where
   go acc insertAt as bs =
@@ -48,10 +66,3 @@ tryGetIndexedSubList l1 l2 = reverse <$> go [] 0 (sortOn fst l1) (sortOn fst l2)
           else go ((insertAt, yn) : acc) insertAt as ys
       -- bs is longer than as, so we can simply append all elements.
       ([], ys) -> Just $ ((insertAt,) . snd <$> reverse ys) <> acc
-
--- | Adds indexes to a list, starting from the provided value.
-indexed :: Int -> [a] -> [(Int, a)]
-indexed = go
- where
-  go i (x : xs) = (i, x) : go (i + 1) xs
-  go _ _ = []

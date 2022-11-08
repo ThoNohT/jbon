@@ -27,6 +27,7 @@ executable bson
   main-is: Main.hs
   other-modules:
       Bson
+      Core
       Json
       Parsing
       Test
