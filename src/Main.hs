@@ -8,7 +8,19 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    "update" : xs -> Test.update $ unwords xs
     ["test"] -> Test.run
     "test" : xs -> Test.runSingleTest $ unwords xs
-    _ -> putStrLn "Invalid command."
+    "update" : xs -> Test.update $ unwords xs
+    "help" : _ -> showUsage
+    _ -> do
+      putStrLn "Invalid command."
+      showUsage
+
+-- | Shows the usage message.
+showUsage :: IO ()
+showUsage = do
+  putStrLn "Usage:"
+  putStrLn "bson test: Run all tests."
+  putStrLn "bson test <test name>: Run the test with the provided name."
+  putStrLn "bson update <test name>: Update the output for he test with the provided name."
+  putStrLn "bson help: Show this help text."
