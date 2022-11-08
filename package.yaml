@@ -70,3 +70,4 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - containers
+    - directory

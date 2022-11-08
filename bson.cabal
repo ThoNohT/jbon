@@ -29,6 +29,7 @@ executable bson
       Bson
       Json
       Parsing
+      Test
       Paths_bson
   hs-source-dirs:
       src
@@ -66,4 +67,5 @@ executable bson
   build-depends:
       base >=4.7 && <5
     , containers
+    , directory
   default-language: Haskell2010
