@@ -3,6 +3,7 @@ module Parsing (
   liftP,
   pChar,
   pString,
+  pCond,
   pCheck,
   pSpan,
   notNull,
@@ -48,14 +49,22 @@ pString :: String -> Parser String
 pString s = sequenceA $ pChar <$> s
 
 -- | A parser that returns the next character if it passes a check, and fails otherwise.
-pCheck :: (Char -> Bool) -> Parser Char
-pCheck f = Parser $ \case
+pCond :: (Char -> Bool) -> Parser Char
+pCond f = Parser $ \case
   x : xs | f x -> Just (xs, x)
   _ -> Nothing
 
+{- | A parser that returns whether the next character passes a check, and consumes it. If the character doesn't pass
+ | the check, then nothing is consumed. If there is no input, returns False.
+-}
+pCheck :: (Char -> Bool) -> Parser Bool
+pCheck f = Parser $ \case
+  x : xs | f x -> Just (xs, True)
+  xs -> Just (xs, False)
+
 -- | A parser that parses a span that satisfies a condition.
 pSpan :: (Char -> Bool) -> Parser String
-pSpan = many . pCheck
+pSpan = many . pCond
 
 -- | A parser that fails another parser if it resulted in an empty list.
 notNull :: Parser [a] -> Parser [a]

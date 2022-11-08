@@ -2,20 +2,20 @@ module Json (JsonValue (..), JsonNumber (..), parseJsonValue) where
 
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
-import Data.Char (isAlphaNum)
-import Parsing (Parser (..), entire, inWs, notNull, pChar, pCheck, pInt, pSpan, pString, sepBy, ws)
+import Parsing (Parser (..), entire, inWs, pChar, pCond, pCheck, pInt, pString, sepBy, ws)
 
 -- | A type the wraps all possible values that can exist inside a json document.
 data JsonValue where
   JsonObj :: [(String, JsonValue)] -> JsonValue
   JsonArr :: [JsonValue] -> JsonValue
   JsonStr :: String -> JsonValue
-  JsonNum :: JsonNumber -> JsonValue
+  JsonNum :: Bool -> JsonNumber -> JsonValue
   JsonBool :: Bool -> JsonValue
   JsonNull :: JsonValue
   deriving (Eq, Show)
 
 -- | For convenience, a json number is separated into decimals and integers, based on whether there is a decimal separator.
+-- | The first Bool indicates whether the number is negative.
 data JsonNumber where
   JsonDecimal :: Integer -> Integer -> JsonNumber
   JsonInt :: Integer -> JsonNumber
@@ -31,8 +31,10 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
   jsonBool = (JsonBool True <$ pString "true") <|> (JsonBool False <$ pString "false")
 
   jsonNumber :: Parser JsonValue
-  jsonNumber = JsonNum <$> (decP <|> intP)
+  jsonNumber = JsonNum <$> negP <*> (decP <|> intP)
    where
+    negP = pCheck (== '-')
+
     decP = do
       pre <- pInt
       void $ pChar '.'
@@ -41,18 +43,21 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
 
     intP = JsonInt <$> pInt
 
-  jsonString :: Parser JsonValue
-  jsonString = JsonStr . concat <$> (pChar '"' *> many stringCharP <* pChar '"')
+  stringLiteral :: Parser String
+  stringLiteral = concat <$> (pChar '"' *> many stringCharP <* pChar '"')
    where
     stringCharP :: Parser String
     stringCharP = escaped <|> unescaped
 
-    unescaped = (: []) <$> pCheck (\c -> c /= '"' && c /= '\\')
+    unescaped = (: []) <$> pCond (\c -> c /= '"' && c /= '\\')
 
     escaped = do
       pre <- pChar '\\'
-      ch <- pCheck (const True)
+      ch <- pCond (const True)
       pure [pre, ch]
+
+  jsonString :: Parser JsonValue
+  jsonString = JsonStr <$> stringLiteral
 
   jsonArray :: Parser JsonValue
   jsonArray = JsonArr <$> ((pChar '[' <* ws) *> elements <* inWs (ws *> pChar ']'))
@@ -67,7 +72,7 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
     pure $ JsonObj values
    where
     pair = do
-      key <- notNull $ pSpan isAlphaNum
+      key <- stringLiteral
       void $ inWs $ pChar ':'
       value <- jsonValue
       pure (key, value)
