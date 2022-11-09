@@ -1,9 +1,9 @@
 module Test (run, runSingleTest, update) where
 
-import Bson (minify, tryGetIndexedSubList)
+import Bson (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Core (indexed)
 import Data.List (find, intercalate)
-import Json (parseJsonValue)
+import Json (JsonValue (..), parseJsonValue)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
@@ -41,6 +41,32 @@ tests =
             (indexed 1 ["0", "0b", "a", "1", "1b", "b", "2", "2b", "2c"])
       )
   , Test "minify" (show $ minify [["a", "b"], ["a"], ["a", "b", "c"], ["b", "c"], ["b", "c"], ["x"]])
+  , Test
+      "getObjectDefinitions"
+      ( intercalate
+          "\n"
+          [ show $ getObjectDefinitions $ JsonObj [("a", JsonNull), ("b", JsonNull)]
+          , show $ getObjectDefinitions $ JsonObj []
+          , show $
+              getObjectDefinitions $
+                JsonArr
+                  [ JsonObj [("a", JsonNull)]
+                  , JsonObj [("a", JsonNull)]
+                  , JsonObj [("a", JsonNull), ("b", JsonNull)]
+                  , JsonObj
+                      [ ("a", JsonNull)
+                      ,
+                        ( "b"
+                        , JsonObj
+                            [ ("a", JsonNull)
+                            , ("b", JsonNull)
+                            , ("c", JsonArr [JsonObj [], JsonObj [("d", JsonNull)]])
+                            ]
+                        )
+                      ]
+                  ]
+          ]
+      )
   ]
 
 -- | Runs all tests.

@@ -43,11 +43,12 @@ minify definitions = makeOptimalObjects [] ordered
       Nothing -> makeOptimalObjects ((i, BsonObject Nothing x (snd <$> x)) : acc) xs
       Just (j, subList) -> makeOptimalObjects ((i, BsonObject (Just j) subList (snd <$> x)) : acc) xs
 
-{- | Attempts to specify The first indexed list as an extension of the second indexed list.
+{- | Attempts to specify the second indexed list as an extension of the first indexed list.
  | The list of indexes will be the places where the fields should be inserted. If multiple entries with the same
  | index exist, they need to be inserted at that index (from the original list), in order.
 -}
 tryGetIndexedSubList :: Indexed String -> Indexed String -> Maybe (Indexed String)
+tryGetIndexedSubList [] _ = Nothing -- Exending from an empty object is not helpful.
 tryGetIndexedSubList l1 l2 = reverse <$> go [] 0 (sortOn fst l1) (sortOn fst l2)
  where
   go acc insertAt as bs =
