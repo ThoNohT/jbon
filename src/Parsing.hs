@@ -18,6 +18,7 @@ import Control.Applicative (Alternative (empty, many, (<|>)))
 import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (second))
 import Data.Char (isDigit, isSpace)
+import Data.Word (Word64)
 import Text.Read (readMaybe)
 
 -- | A parser.
@@ -71,7 +72,7 @@ notNull :: Parser [a] -> Parser [a]
 notNull p = p >>= liftP . \v -> if null v then Nothing else Just v
 
 -- | A parser that parses an integer.
-pInt :: Parser Integer
+pInt :: Parser Word64
 pInt = liftP . readMaybe =<< notNull (pSpan isDigit)
 
 -- | A parser that parses whitespace.

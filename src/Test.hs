@@ -1,84 +1,94 @@
 module Test (run, runSingleTest, update) where
 
-import Jbon (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
 import Core (indexed)
+import Data.ByteString.Builder (toLazyByteString)
+import Data.ByteString.Internal as BSI (w2c)
+import Data.ByteString.Lazy as BSL (ByteString, readFile, unpack, writeFile)
+import Data.ByteString.Lazy.Char8 (pack)
 import Data.List (find)
+import Jbon (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
 import Json (JsonNumber (..), JsonValue (..), parseJsonValue)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
-data Test = Test {testName :: String, runTest :: String}
+data Test = Test {testName :: String, runTest :: ByteString}
 
 -- | A list containing all available tests.
 tests :: [Test]
 tests =
   [ Test
       "parsing json"
-      ( unlines
-          [ show $ parseJsonValue "null"
-          , show $ parseJsonValue "true"
-          , show $ parseJsonValue "false"
-          , show $ parseJsonValue "13"
-          , show $ parseJsonValue "-13"
-          , show $ parseJsonValue "13.342"
-          , show $ parseJsonValue "-1234.342"
-          , show $ parseJsonValue "\"Some \\a string\\\"\""
-          , show $ parseJsonValue "\"\""
-          , show $ parseJsonValue "[13, 12.5, true, null, \"Hey!\", [false, true]]"
-          , show $ parseJsonValue "[]"
-          , show $ parseJsonValue "[null]"
-          , show $ parseJsonValue "{}"
-          , show $ parseJsonValue "{ \"test\": 25, \"x\": null,  \"five\"  : \"five\",  \"arr\": [1,2,3, {}]  }"
-          ]
+      ( pack $
+          unlines
+            [ show $ parseJsonValue "null"
+            , show $ parseJsonValue "true"
+            , show $ parseJsonValue "false"
+            , show $ parseJsonValue "13"
+            , show $ parseJsonValue "-13"
+            , show $ parseJsonValue "13.342"
+            , show $ parseJsonValue "-1234.342"
+            , show $ parseJsonValue "\"Some \\a string\\\"\""
+            , show $ parseJsonValue "\"\""
+            , show $ parseJsonValue "[13, 12.5, true, null, \"Hey!\", [false, true]]"
+            , show $ parseJsonValue "[]"
+            , show $ parseJsonValue "[null]"
+            , show $ parseJsonValue "{}"
+            , show $ parseJsonValue "{ \"test\": 25, \"x\": null,  \"five\"  : \"five\",  \"arr\": [1,2,3, {}]  }"
+            ]
       )
-  , Test "indexed" (show $ indexed @String 1 ["a", "b"])
+  , Test "indexed" (pack $ show $ indexed @String 1 ["a", "b"])
   , Test
       "tryGetIndexedSubList"
-      ( show $
-          tryGetIndexedSubList
-            (indexed 1 ["a", "b"])
-            (indexed 1 ["0", "0b", "a", "1", "1b", "b", "2", "2b", "2c"])
+      ( pack $
+          show $
+            tryGetIndexedSubList
+              (indexed 1 ["a", "b"])
+              (indexed 1 ["0", "0b", "a", "1", "1b", "b", "2", "2b", "2c"])
       )
-  , Test "minify" (show $ minify [["a", "b"], ["a"], ["a", "b", "c"], ["b", "c"], ["b", "c"], ["x"]])
+  , Test "minify" (pack $ show $ minify [["a", "b"], ["a"], ["a", "b", "c"], ["b", "c"], ["b", "c"], ["x"]])
   , Test
       "getObjectDefinitions"
-      ( unlines
-          [ show $ getObjectDefinitions $ JsonObj [("a", JsonNull), ("b", JsonNull)]
-          , show $ getObjectDefinitions $ JsonObj []
-          , show $
-              getObjectDefinitions $
-                JsonArr
-                  [ JsonObj [("a", JsonNull)]
-                  , JsonObj [("a", JsonNull)]
-                  , JsonObj [("a", JsonNull), ("b", JsonNull)]
-                  , JsonObj
-                      [ ("a", JsonNull)
-                      ,
-                        ( "b"
-                        , JsonObj
-                            [ ("a", JsonNull)
-                            , ("b", JsonNull)
-                            , ("c", JsonArr [JsonObj [], JsonObj [("d", JsonNull)]])
-                            ]
-                        )
-                      ]
-                  ]
-          ]
+      ( pack $
+          unlines
+            [ show $ getObjectDefinitions $ JsonObj [("a", JsonNull), ("b", JsonNull)]
+            , show $ getObjectDefinitions $ JsonObj []
+            , show $
+                getObjectDefinitions $
+                  JsonArr
+                    [ JsonObj [("a", JsonNull)]
+                    , JsonObj [("a", JsonNull)]
+                    , JsonObj [("a", JsonNull), ("b", JsonNull)]
+                    , JsonObj
+                        [ ("a", JsonNull)
+                        ,
+                          ( "b"
+                          , JsonObj
+                              [ ("a", JsonNull)
+                              , ("b", JsonNull)
+                              , ("c", JsonArr [JsonObj [], JsonObj [("d", JsonNull)]])
+                              ]
+                          )
+                        ]
+                    ]
+            ]
+      )
+  , Test "encode-empty" (toLazyByteString $ encode (JsonObj []))
+  , Test "encode-single" (toLazyByteString $ encode (JsonObj [("a", JsonBool True)]))
+  , Test
+      "encode-nested"
+      ( toLazyByteString $
+          encode (JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
       )
   , Test
-      "encode"
-      ( unlines
-          [ unwords $ encode (JsonObj [])
-          , unwords $ encode (JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
-          , unwords $
-              encode
-                ( JsonObj
-                    [ ("a", JsonStr "Hello!\\\"")
-                    , ("b", JsonBool True)
-                    , ("c", JsonObj [("b", JsonNull)])
-                    ]
-                )
-          ]
+      "encode-advanced"
+      ( toLazyByteString $
+          encode
+            ( JsonObj
+                [ ("a", JsonStr "Hello!\\\"")
+                , ("b", JsonBool True)
+                , ("c", JsonObj [("b", JsonNull)])
+                ]
+            )
       )
   ]
 
@@ -103,21 +113,21 @@ runSingleTest name = do
       runSingleTest' name (runTest test)
 
 -- | Helper for running a single test.
-runSingleTest' :: String -> String -> IO ()
+runSingleTest' :: String -> ByteString -> IO ()
 runSingleTest' name result = do
   let fp = "./Tests/" <> name <> ".txt"
   exists <- doesFileExist fp
   if not exists
     then statusMsg "ERROR" "No results file found."
     else do
-      fileContents <- readFile fp
+      fileContents <- BSL.readFile fp
       if fileContents == result
         then statusMsg "OK" "Test succeeded."
         else do
           statusMsg "ERROR" "Test result mismatch, got:"
-          putStrLn result
+          putStrLn $ BSI.w2c <$> BSL.unpack result
           putStrLn "Expected:"
-          putStrLn fileContents
+          putStrLn $ BSI.w2c <$> BSL.unpack fileContents
  where
   statusMsg status msg = putStrLn $ "[" <> status <> "] '" <> name <> "': " <> msg
 
@@ -136,6 +146,6 @@ update name = do
 
       putStrLn $ "Test '" <> name <> "' result:"
       let result = runTest test
-      putStrLn result
-      writeFile fp result
+      putStrLn $ BSI.w2c <$> BSL.unpack result
+      BSL.writeFile fp result
       putStrLn $ "Written to " <> fp <> "."

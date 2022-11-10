@@ -71,3 +71,4 @@ executables:
     dependencies:
     - containers
     - directory
+    - bytestring

@@ -1,8 +1,10 @@
 module Jbon (JbonObject (..), getObjectDefinitions, tryGetIndexedSubList, minify, encode) where
 
 import Core (Indexed, firstJust, indexed)
-import Data.List (find, nub, sortOn)
+import Data.ByteString.Builder qualified as BSB (Builder, string8, stringUtf8, word32LE, word64LE, word8)
+import Data.List (find, genericLength, nub, sortOn)
 import Data.Maybe (fromJust)
+import Data.Word (Word32)
 import Json (JsonNumber (..), JsonValue (..))
 
 {- | Definition of a Jbon object:
@@ -10,42 +12,46 @@ import Json (JsonNumber (..), JsonValue (..))
  - Which fields are present this object, besides the ones inherited.
  - All fields present in this object.
 -}
-data JbonObject = JbonObject (Maybe Int) (Indexed String) [String] deriving (Eq, Show)
+data JbonObject = JbonObject (Maybe Word32) (Indexed String) [String] deriving (Eq, Show)
 
-encode :: JsonValue -> [String]
-encode value = "JBON" : header <> encode' value
+encode :: JsonValue -> BSB.Builder
+encode value = BSB.string8 "JBON" <> header <> encode' value
  where
   objs = getObjectDefinitions value
 
-  encodeStr :: String -> [String]
-  encodeStr str = [show $ length str, str]
+  encodeLength :: forall a. [a] -> BSB.Builder
+  encodeLength = BSB.word32LE . genericLength
 
-  header :: [String]
-  header = show (length objs) : concat (hEncode . snd <$> objs)
+  encodeStr :: String -> BSB.Builder
+  encodeStr str = encodeLength str <> BSB.stringUtf8 str
 
-  hEncode :: JbonObject -> [String]
-  hEncode (JbonObject inherit fields _) = [maybe "0" show inherit, show $ length fields] <> concat (encodeField <$> fields)
+  header :: BSB.Builder
+  header = encodeLength objs <> mconcat (hEncode . snd <$> objs)
 
-  encodeField :: (Int, String) -> [String]
-  encodeField (idx, str) = show idx : encodeStr str
+  hEncode :: JbonObject -> BSB.Builder
+  hEncode (JbonObject inherit fields _) =
+    maybe (BSB.word32LE 0) BSB.word32LE inherit <> encodeLength fields <> mconcat (encodeField <$> fields)
 
-  encode' :: JsonValue -> [String]
-  encode' JsonNull = ["0"]
-  encode' (JsonBool False) = ["1"]
-  encode' (JsonBool True) = ["2"]
-  encode' (JsonNum False (JsonInt i)) = ["3", show i]
-  encode' (JsonNum True (JsonInt i)) = ["4", show i]
-  encode' (JsonNum False (JsonDecimal i d)) = ["5", show i, show d]
-  encode' (JsonNum True (JsonDecimal i d)) = ["6", show i, show d]
-  encode' (JsonStr str) = "7" : encodeStr str
-  encode' (JsonArr arr) = ["8", show $ length arr] <> concat (encode' <$> arr)
-  encode' (JsonObj fields) = ["9", show $ getObjectId fields] <> concat (encode' . snd <$> fields)
+  encodeField :: (Word32, String) -> BSB.Builder
+  encodeField (idx, str) = BSB.word32LE idx <> encodeStr str
 
-  getObjectId :: forall a. [(String, a)] -> Int
+  encode' :: JsonValue -> BSB.Builder
+  encode' JsonNull = BSB.word8 0
+  encode' (JsonBool False) = BSB.word8 1
+  encode' (JsonBool True) = BSB.word8 2
+  encode' (JsonNum False (JsonInt i)) = BSB.word8 3 <> BSB.word64LE i
+  encode' (JsonNum True (JsonInt i)) = BSB.word8 4 <> BSB.word64LE i
+  encode' (JsonNum False (JsonDecimal i d)) = BSB.word8 5 <> BSB.word64LE i <> BSB.word64LE d
+  encode' (JsonNum True (JsonDecimal i d)) = BSB.word8 6 <> BSB.word64LE i <> BSB.word64LE d
+  encode' (JsonStr str) = BSB.word8 7 <> encodeStr str
+  encode' (JsonArr arr) = BSB.word8 8 <> encodeLength arr <> mconcat (encode' <$> arr)
+  encode' (JsonObj fields) = BSB.word8 9 <> BSB.word32LE (getObjectId fields) <> mconcat (encode' . snd <$> fields)
+
+  getObjectId :: forall a. [(String, a)] -> Word32
   getObjectId fields =
     fromJust $ fst <$> find (\(_, JbonObject _ _ objFields) -> (fst <$> fields) == objFields) objs
 
-getObjectDefinitions :: JsonValue -> [(Int, JbonObject)]
+getObjectDefinitions :: JsonValue -> [(Word32, JbonObject)]
 getObjectDefinitions = minify . extract
  where
   extract :: JsonValue -> [[String]]

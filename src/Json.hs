@@ -2,7 +2,8 @@ module Json (JsonValue (..), JsonNumber (..), parseJsonValue) where
 
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
-import Parsing (Parser (..), entire, inWs, pChar, pCond, pCheck, pInt, pString, sepBy, ws)
+import Data.Word (Word64)
+import Parsing (Parser (..), entire, inWs, pChar, pCheck, pCond, pInt, pString, sepBy, ws)
 
 -- | A type the wraps all possible values that can exist inside a json document.
 data JsonValue where
@@ -14,11 +15,12 @@ data JsonValue where
   JsonNull :: JsonValue
   deriving (Eq, Show)
 
--- | For convenience, a json number is separated into decimals and integers, based on whether there is a decimal separator.
--- | The first Bool indicates whether the number is negative.
+{- | For convenience, a json number is separated into decimals and integers, based on whether there is a decimal separator.
+ | The first Bool indicates whether the number is negative.
+-}
 data JsonNumber where
-  JsonDecimal :: Integer -> Integer -> JsonNumber
-  JsonInt :: Integer -> JsonNumber
+  JsonDecimal :: Word64 -> Word64 -> JsonNumber
+  JsonInt :: Word64 -> JsonNumber
   deriving (Eq, Show)
 
 parseJsonValue :: String -> Maybe JsonValue
