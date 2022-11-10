@@ -4,11 +4,11 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           bson
+name:           jbon
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/ThoNohT/bson#readme>
-homepage:       https://github.com/ThoNohT/bson#readme
-bug-reports:    https://github.com/ThoNohT/bson/issues
+description:    Please see the README on GitHub at <https://github.com/ThoNohT/jbon#readme>
+homepage:       https://github.com/ThoNohT/jbon#readme
+bug-reports:    https://github.com/ThoNohT/jbon/issues
 author:         ThoNohT
 maintainer:     e.c.p.bataille@gmail.com
 copyright:      2022 ThoNohT
@@ -21,17 +21,17 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/ThoNohT/bson
+  location: https://github.com/ThoNohT/jbon
 
-executable bson
+executable jbon
   main-is: Main.hs
   other-modules:
-      Bson
       Core
+      Jbon
       Json
       Parsing
       Test
-      Paths_bson
+      Paths_jbon
   hs-source-dirs:
       src
   default-extensions:

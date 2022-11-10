@@ -1,6 +1,6 @@
 module Test (run, runSingleTest, update) where
 
-import Bson (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
+import Jbon (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
 import Core (indexed)
 import Data.List (find)
 import Json (JsonNumber (..), JsonValue (..), parseJsonValue)

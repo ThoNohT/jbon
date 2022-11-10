@@ -20,7 +20,7 @@ main = do
 showUsage :: IO ()
 showUsage = do
   putStrLn "Usage:"
-  putStrLn "bson test: Run all tests."
-  putStrLn "bson test <test name>: Run the test with the provided name."
-  putStrLn "bson update <test name>: Update the output for he test with the provided name."
-  putStrLn "bson help: Show this help text."
+  putStrLn "jbon test: Run all tests."
+  putStrLn "jbon test <test name>: Run the test with the provided name."
+  putStrLn "jbon update <test name>: Update the output for he test with the provided name."
+  putStrLn "jbon help: Show this help text."

@@ -1,19 +1,19 @@
-module Bson (BsonObject (..), getObjectDefinitions, tryGetIndexedSubList, minify, encode) where
+module Jbon (JbonObject (..), getObjectDefinitions, tryGetIndexedSubList, minify, encode) where
 
 import Core (Indexed, firstJust, indexed)
 import Data.List (find, nub, sortOn)
 import Data.Maybe (fromJust)
 import Json (JsonNumber (..), JsonValue (..))
 
-{- | Definition of a Bson object:
+{- | Definition of a Jbon object:
  - From which object index it inherits.
  - Which fields are present this object, besides the ones inherited.
  - All fields present in this object.
 -}
-data BsonObject = BsonObject (Maybe Int) (Indexed String) [String] deriving (Eq, Show)
+data JbonObject = JbonObject (Maybe Int) (Indexed String) [String] deriving (Eq, Show)
 
 encode :: JsonValue -> [String]
-encode value = "BSON" : header <> encode' value
+encode value = "JBON" : header <> encode' value
  where
   objs = getObjectDefinitions value
 
@@ -23,8 +23,8 @@ encode value = "BSON" : header <> encode' value
   header :: [String]
   header = show (length objs) : concat (hEncode . snd <$> objs)
 
-  hEncode :: BsonObject -> [String]
-  hEncode (BsonObject inherit fields _) = [maybe "0" show inherit, show $ length fields] <> concat (encodeField <$> fields)
+  hEncode :: JbonObject -> [String]
+  hEncode (JbonObject inherit fields _) = [maybe "0" show inherit, show $ length fields] <> concat (encodeField <$> fields)
 
   encodeField :: (Int, String) -> [String]
   encodeField (idx, str) = show idx : encodeStr str
@@ -43,9 +43,9 @@ encode value = "BSON" : header <> encode' value
 
   getObjectId :: forall a. [(String, a)] -> Int
   getObjectId fields =
-    fromJust $ fst <$> find (\(_, BsonObject _ _ objFields) -> (fst <$> fields) == objFields) objs
+    fromJust $ fst <$> find (\(_, JbonObject _ _ objFields) -> (fst <$> fields) == objFields) objs
 
-getObjectDefinitions :: JsonValue -> [(Int, BsonObject)]
+getObjectDefinitions :: JsonValue -> [(Int, JbonObject)]
 getObjectDefinitions = minify . extract
  where
   extract :: JsonValue -> [[String]]
@@ -56,23 +56,23 @@ getObjectDefinitions = minify . extract
   extract (JsonArr elems) = concat $ extract <$> elems
   extract (JsonObj values) = (fst <$> values) : concat (extract <$> fmap snd values)
 
-{- | Given a list of property lists, converts a minimal list of BsonObjects, where each object tries to inherit from
+{- | Given a list of property lists, converts a minimal list of JbonObjects, where each object tries to inherit from
  | another object such that it minimizes its own introduced properties.
 -}
-minify :: [[String]] -> Indexed BsonObject
+minify :: [[String]] -> Indexed JbonObject
 minify definitions = reverse $ makeOptimalObjects [] ordered
  where
   ordered = reverse $ indexed 1 $ indexed 1 <$> nub (sortOn length definitions)
 
-  -- Given a list of property lists, ordered by the number of properties descending, makes BsonObjects.
+  -- Given a list of property lists, ordered by the number of properties descending, makes JbonObjects.
   -- Starts at the biggest list of properties, and will always try to inherit from the biggest
   -- list of properties to its right in the list.
-  makeOptimalObjects :: Indexed BsonObject -> Indexed (Indexed String) -> Indexed BsonObject
+  makeOptimalObjects :: Indexed JbonObject -> Indexed (Indexed String) -> Indexed JbonObject
   makeOptimalObjects acc = \case
     [] -> reverse acc
     ((i, x) : xs) -> case firstJust (\(j, l2) -> (j,) <$> tryGetIndexedSubList l2 x) xs of
-      Nothing -> makeOptimalObjects ((i, BsonObject Nothing x (snd <$> x)) : acc) xs
-      Just (j, subList) -> makeOptimalObjects ((i, BsonObject (Just j) subList (snd <$> x)) : acc) xs
+      Nothing -> makeOptimalObjects ((i, JbonObject Nothing x (snd <$> x)) : acc) xs
+      Just (j, subList) -> makeOptimalObjects ((i, JbonObject (Just j) subList (snd <$> x)) : acc) xs
 
 {- | Attempts to specify the second indexed list as an extension of the first indexed list.
  | The list of indexes will be the places where the fields should be inserted. If multiple entries with the same
