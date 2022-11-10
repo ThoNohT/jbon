@@ -1,9 +1,9 @@
 module Test (run, runSingleTest, update) where
 
-import Bson (getObjectDefinitions, minify, tryGetIndexedSubList)
+import Bson (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
 import Core (indexed)
-import Data.List (find, intercalate)
-import Json (JsonValue (..), parseJsonValue)
+import Data.List (find)
+import Json (JsonNumber (..), JsonValue (..), parseJsonValue)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
@@ -14,8 +14,7 @@ tests :: [Test]
 tests =
   [ Test
       "parsing json"
-      ( intercalate
-          "\n"
+      ( unlines
           [ show $ parseJsonValue "null"
           , show $ parseJsonValue "true"
           , show $ parseJsonValue "false"
@@ -43,8 +42,7 @@ tests =
   , Test "minify" (show $ minify [["a", "b"], ["a"], ["a", "b", "c"], ["b", "c"], ["b", "c"], ["x"]])
   , Test
       "getObjectDefinitions"
-      ( intercalate
-          "\n"
+      ( unlines
           [ show $ getObjectDefinitions $ JsonObj [("a", JsonNull), ("b", JsonNull)]
           , show $ getObjectDefinitions $ JsonObj []
           , show $
@@ -65,6 +63,21 @@ tests =
                         )
                       ]
                   ]
+          ]
+      )
+  , Test
+      "encode"
+      ( unlines
+          [ unwords $ encode (JsonObj [])
+          , unwords $ encode (JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
+          , unwords $
+              encode
+                ( JsonObj
+                    [ ("a", JsonStr "Hello!\\\"")
+                    , ("b", JsonBool True)
+                    , ("c", JsonObj [("b", JsonNull)])
+                    ]
+                )
           ]
       )
   ]

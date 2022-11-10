@@ -1,8 +1,9 @@
-module Bson (BsonObject (..), BsonValue (..), getObjectDefinitions, tryGetIndexedSubList, minify) where
+module Bson (BsonObject (..), getObjectDefinitions, tryGetIndexedSubList, minify, encode) where
 
 import Core (Indexed, firstJust, indexed)
-import Data.List (nub, sortOn)
-import Json (JsonValue (..))
+import Data.List (find, nub, sortOn)
+import Data.Maybe (fromJust)
+import Json (JsonNumber (..), JsonValue (..))
 
 {- | Definition of a Bson object:
  - From which object index it inherits.
@@ -11,8 +12,38 @@ import Json (JsonValue (..))
 -}
 data BsonObject = BsonObject (Maybe Int) (Indexed String) [String] deriving (Eq, Show)
 
--- | Indication of what type of value comes next.
-data BsonValue = BsonObj Int | BsonArr | BsonStr | BsonNum | BsonBool | BsonNull deriving (Eq, Show)
+encode :: JsonValue -> [String]
+encode value = "BSON" : header <> encode' value
+ where
+  objs = getObjectDefinitions value
+
+  encodeStr :: String -> [String]
+  encodeStr str = [show $ length str, str]
+
+  header :: [String]
+  header = show (length objs) : concat (hEncode . snd <$> objs)
+
+  hEncode :: BsonObject -> [String]
+  hEncode (BsonObject inherit fields _) = [maybe "0" show inherit, show $ length fields] <> concat (encodeField <$> fields)
+
+  encodeField :: (Int, String) -> [String]
+  encodeField (idx, str) = show idx : encodeStr str
+
+  encode' :: JsonValue -> [String]
+  encode' JsonNull = ["0"]
+  encode' (JsonBool False) = ["1"]
+  encode' (JsonBool True) = ["2"]
+  encode' (JsonNum False (JsonInt i)) = ["3", show i]
+  encode' (JsonNum True (JsonInt i)) = ["4", show i]
+  encode' (JsonNum False (JsonDecimal i d)) = ["5", show i, show d]
+  encode' (JsonNum True (JsonDecimal i d)) = ["6", show i, show d]
+  encode' (JsonStr str) = "7" : encodeStr str
+  encode' (JsonArr arr) = ["8", show $ length arr] <> concat (encode' <$> arr)
+  encode' (JsonObj fields) = ["9", show $ getObjectId fields] <> concat (encode' . snd <$> fields)
+
+  getObjectId :: forall a. [(String, a)] -> Int
+  getObjectId fields =
+    fromJust $ fst <$> find (\(_, BsonObject _ _ objFields) -> (fst <$> fields) == objFields) objs
 
 getObjectDefinitions :: JsonValue -> [(Int, BsonObject)]
 getObjectDefinitions = minify . extract
@@ -29,7 +60,7 @@ getObjectDefinitions = minify . extract
  | another object such that it minimizes its own introduced properties.
 -}
 minify :: [[String]] -> Indexed BsonObject
-minify definitions = makeOptimalObjects [] ordered
+minify definitions = reverse $ makeOptimalObjects [] ordered
  where
   ordered = reverse $ indexed 1 $ indexed 1 <$> nub (sortOn length definitions)
 
