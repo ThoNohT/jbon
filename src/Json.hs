@@ -1,19 +1,53 @@
-module Json (JsonValue (..), JsonNumber (..), parseJsonValue) where
+module Json (JsonValue (..), JsonNumber (..), parseJsonValue, maxStringLength, maxArrayLength, maxInt, maxDecimal) where
 
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
+import Core (safeMaximum)
+import Data.List (genericLength)
 import Data.Word (Word64)
 import Parsing (Parser (..), entire, inWs, pChar, pCheck, pCond, pInt, pString, sepBy, ws)
 
 -- | A type the wraps all possible values that can exist inside a json document.
 data JsonValue where
-  JsonObj :: [(String, JsonValue)] -> JsonValue
-  JsonArr :: [JsonValue] -> JsonValue
-  JsonStr :: String -> JsonValue
-  JsonNum :: Bool -> JsonNumber -> JsonValue
-  JsonBool :: Bool -> JsonValue
   JsonNull :: JsonValue
+  JsonBool :: Bool -> JsonValue
+  JsonNum :: Bool -> JsonNumber -> JsonValue
+  JsonStr :: String -> JsonValue
+  JsonArr :: [JsonValue] -> JsonValue
+  JsonObj :: [(String, JsonValue)] -> JsonValue
   deriving (Eq, Show)
+
+-- | Determines the length of the longest string in a json value.
+maxStringLength :: JsonValue -> Word64
+maxStringLength = \case
+  JsonStr str -> genericLength str
+  JsonArr arr -> safeMaximum $ maxStringLength <$> arr
+  JsonObj objs -> safeMaximum $ maxStringLength . snd <$> objs
+  _ -> 0
+
+-- | Determines the length of the longest array in a json value.
+maxArrayLength :: JsonValue -> Word64
+maxArrayLength = \case
+  JsonArr arr -> max (genericLength arr) (safeMaximum $ maxArrayLength <$> arr)
+  JsonObj objs -> safeMaximum $ maxArrayLength . snd <$> objs
+  _ -> 0
+
+-- | Determines the maximum integer value in a json value.
+maxInt :: JsonValue -> Word64
+maxInt = \case
+  JsonNum _ (JsonInt i) -> i
+  JsonNum _ (JsonDecimal i _) -> i
+  JsonArr arr -> (safeMaximum $ maxInt <$> arr)
+  JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
+  _ -> 0
+
+-- | Determines the maximum decimal value in a json value.
+maxDecimal :: JsonValue -> Word64
+maxDecimal = \case
+  JsonNum _ (JsonDecimal _ d) -> d
+  JsonArr arr -> (safeMaximum $ maxInt <$> arr)
+  JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
+  _ -> 0
 
 {- | For convenience, a json number is separated into decimals and integers, based on whether there is a decimal separator.
  | The first Bool indicates whether the number is negative.
@@ -23,6 +57,7 @@ data JsonNumber where
   JsonInt :: Word64 -> JsonNumber
   deriving (Eq, Show)
 
+-- | Attempts to parse a json value from a string.
 parseJsonValue :: String -> Maybe JsonValue
 parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
  where

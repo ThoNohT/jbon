@@ -1,57 +1,129 @@
 module Jbon (JbonObject (..), getObjectDefinitions, tryGetIndexedSubList, minify, encode) where
 
-import Core (Indexed, firstJust, indexed)
-import Data.ByteString.Builder qualified as BSB (Builder, string8, stringUtf8, word32LE, word64LE, word8)
+import Core (Indexed, firstJust, indexed, safeMaximum)
+import Data.Bits (shift)
+import Data.ByteString.Builder qualified as BSB (Builder, string8, stringUtf8, word16LE, word32LE, word64LE, word8)
 import Data.List (find, genericLength, nub, sortOn)
-import Data.Maybe (fromJust)
-import Data.Word (Word32)
-import Json (JsonNumber (..), JsonValue (..))
+import Data.Maybe (fromJust, fromMaybe)
+import Data.Word (Word16, Word32, Word64, Word8)
+import Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt, maxStringLength)
 
 {- | Definition of a Jbon object:
  - From which object index it inherits.
  - Which fields are present this object, besides the ones inherited.
  - All fields present in this object.
 -}
-data JbonObject = JbonObject (Maybe Word32) (Indexed String) [String] deriving (Eq, Show)
+data JbonObject = JbonObject (Maybe Word64) (Indexed String) [String] deriving (Eq, Show)
+
+-- | Returns the number of fields in this object.
+nFields :: JbonObject -> Word64
+nFields (JbonObject _ _ fields) = genericLength fields
+
+-- | Determines the length of the longest field name.
+maxFieldLength :: JbonObject -> Word64
+maxFieldLength (JbonObject _ _ fields) = safeMaximum $ genericLength <$> fields
+
+-- | The number of bits to use for specific types of numbers in the encoded Jbon data
+data WordSize = W8 | W16 | W32 | W64
+
+-- | Determines the word size in which a value fits.
+wordSize :: Word64 -> WordSize
+wordSize w
+  | w > fromIntegral (maxBound @Word32) = W64
+  | w > fromIntegral (maxBound @Word16) = W32
+  | w > fromIntegral (maxBound @Word8) = W16
+  | otherwise = W8
+
+-- | Converts a WordSize to a Word16 with the two least significant bits set to the corresponding value.
+wordSizeBits :: WordSize -> Word16
+wordSizeBits W8 = 0
+wordSizeBits W16 = 1
+wordSizeBits W32 = 2
+wordSizeBits W64 = 3
+
+-- | Settings to use when encoding or decoding Jbon, these are encoded in the first two bytes after the Jbon header.
+data EncodingSettings = EncodingSettings
+  { numberOfObjects :: WordSize
+  , numberOfFields :: WordSize
+  , arrayLength :: WordSize
+  , stringLength :: WordSize
+  , objectNameLength :: WordSize
+  , intSize :: WordSize
+  , decimalSize :: WordSize
+  }
 
 encode :: JsonValue -> BSB.Builder
-encode value = BSB.string8 "JBON" <> header <> encode' value
+encode value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> encode' value
  where
   objs = getObjectDefinitions value
 
-  encodeLength :: forall a. [a] -> BSB.Builder
-  encodeLength = BSB.word32LE . genericLength
+  settings =
+    EncodingSettings
+      { numberOfObjects = wordSize $ genericLength objs
+      , numberOfFields = wordSize $ safeMaximum $ nFields . snd <$> objs
+      , arrayLength = wordSize $ maxArrayLength value
+      , stringLength = wordSize $ maxStringLength value
+      , objectNameLength = wordSize $ safeMaximum $ maxFieldLength . snd <$> objs
+      , intSize = wordSize $ maxInt value
+      , decimalSize = wordSize $ maxDecimal value
+      }
+
+  settingsHeader =
+    BSB.word16LE $
+      wordSizeBits (numberOfObjects settings)
+        + shift (wordSizeBits $ numberOfFields settings) 2
+        + shift (wordSizeBits $ arrayLength settings) 4
+        + shift (wordSizeBits $ stringLength settings) 6
+        + shift (wordSizeBits $ objectNameLength settings) 8
+
+  encodeNumber :: WordSize -> Word64 -> BSB.Builder
+  encodeNumber W8 = BSB.word8 . fromIntegral
+  encodeNumber W16 = BSB.word16LE . fromIntegral
+  encodeNumber W32 = BSB.word32LE . fromIntegral
+  encodeNumber W64 = BSB.word64LE
+
+  encodeLength :: forall a. WordSize -> [a] -> BSB.Builder
+  encodeLength ws = encodeNumber ws . genericLength
 
   encodeStr :: String -> BSB.Builder
-  encodeStr str = encodeLength str <> BSB.stringUtf8 str
+  encodeStr str = encodeLength (stringLength settings) str <> BSB.stringUtf8 str
 
-  header :: BSB.Builder
-  header = encodeLength objs <> mconcat (hEncode . snd <$> objs)
+  objsHeader :: BSB.Builder
+  objsHeader = encodeLength (numberOfObjects settings) objs <> mconcat (hEncode . snd <$> objs)
 
   hEncode :: JbonObject -> BSB.Builder
   hEncode (JbonObject inherit fields _) =
-    maybe (BSB.word32LE 0) BSB.word32LE inherit <> encodeLength fields <> mconcat (encodeField <$> fields)
+    encodeNumber (numberOfObjects settings) (fromMaybe 0 inherit)
+      <> encodeLength (numberOfFields settings) fields
+      <> mconcat (encodeField <$> fields)
 
-  encodeField :: (Word32, String) -> BSB.Builder
-  encodeField (idx, str) = BSB.word32LE idx <> encodeStr str
+  encodeField :: (Word64, String) -> BSB.Builder
+  encodeField (idx, str) = encodeNumber (numberOfFields settings) idx <> encodeStr str
 
   encode' :: JsonValue -> BSB.Builder
   encode' JsonNull = BSB.word8 0
   encode' (JsonBool False) = BSB.word8 1
   encode' (JsonBool True) = BSB.word8 2
-  encode' (JsonNum False (JsonInt i)) = BSB.word8 3 <> BSB.word64LE i
-  encode' (JsonNum True (JsonInt i)) = BSB.word8 4 <> BSB.word64LE i
-  encode' (JsonNum False (JsonDecimal i d)) = BSB.word8 5 <> BSB.word64LE i <> BSB.word64LE d
-  encode' (JsonNum True (JsonDecimal i d)) = BSB.word8 6 <> BSB.word64LE i <> BSB.word64LE d
+  encode' (JsonNum False (JsonInt i)) = BSB.word8 3 <> encodeNumber (intSize settings) i
+  encode' (JsonNum True (JsonInt i)) = BSB.word8 4 <> encodeNumber (intSize settings) i
+  encode' (JsonNum False (JsonDecimal i d)) =
+    BSB.word8 5 <> encodeNumber (intSize settings) i
+      <> encodeNumber (decimalSize settings) d
+  encode' (JsonNum True (JsonDecimal i d)) =
+    BSB.word8 6 <> encodeNumber (intSize settings) i
+      <> encodeNumber (decimalSize settings) d
   encode' (JsonStr str) = BSB.word8 7 <> encodeStr str
-  encode' (JsonArr arr) = BSB.word8 8 <> encodeLength arr <> mconcat (encode' <$> arr)
-  encode' (JsonObj fields) = BSB.word8 9 <> BSB.word32LE (getObjectId fields) <> mconcat (encode' . snd <$> fields)
+  encode' (JsonArr arr) = BSB.word8 8 <> encodeLength (arrayLength settings) arr <> mconcat (encode' <$> arr)
+  encode' (JsonObj fields) =
+    BSB.word8 9
+      <> encodeNumber (numberOfObjects settings) (getObjectId fields)
+      <> mconcat (encode' . snd <$> fields)
 
-  getObjectId :: forall a. [(String, a)] -> Word32
+  getObjectId :: forall a. [(String, a)] -> Word64
   getObjectId fields =
     fromJust $ fst <$> find (\(_, JbonObject _ _ objFields) -> (fst <$> fields) == objFields) objs
 
-getObjectDefinitions :: JsonValue -> [(Word32, JbonObject)]
+getObjectDefinitions :: JsonValue -> [(Word64, JbonObject)]
 getObjectDefinitions = minify . extract
  where
   extract :: JsonValue -> [[String]]
