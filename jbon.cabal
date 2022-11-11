@@ -27,7 +27,9 @@ executable jbon
   main-is: Main.hs
   other-modules:
       Core
-      Jbon
+      Jbon.Build
+      Jbon.Encode
+      Jbon.Jbon
       Json
       Parsing
       Test

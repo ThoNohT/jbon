@@ -1,17 +1,22 @@
 module Test (run, runSingleTest, update) where
 
 import Core (indexed)
-import Data.ByteString.Builder (toLazyByteString)
+import Data.ByteString.Builder (Builder, toLazyByteString)
 import Data.ByteString.Internal as BSI (w2c)
 import Data.ByteString.Lazy as BSL (ByteString, readFile, unpack, writeFile)
 import Data.ByteString.Lazy.Char8 (pack)
 import Data.List (find)
-import Jbon (encode, getObjectDefinitions, minify, tryGetIndexedSubList)
+import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
+import Jbon.Encode (encode)
 import Json (JsonNumber (..), JsonValue (..), parseJsonValue)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
 data Test = Test {testName :: String, runTest :: ByteString}
+
+-- | Helpre to build jbon objects and encode them in one go for tests.
+buildAndDecode :: JsonValue -> Builder
+buildAndDecode value = encode objs value where objs = getObjectDefinitions value
 
 -- | A list containing all available tests.
 tests :: [Test]
@@ -72,17 +77,17 @@ tests =
                     ]
             ]
       )
-  , Test "encode-empty" (toLazyByteString $ encode (JsonObj []))
-  , Test "encode-single" (toLazyByteString $ encode (JsonObj [("a", JsonBool True)]))
+  , Test "encode-empty" (toLazyByteString $ buildAndDecode (JsonObj []))
+  , Test "encode-single" (toLazyByteString $ buildAndDecode (JsonObj [("a", JsonBool True)]))
   , Test
       "encode-nested"
       ( toLazyByteString $
-          encode (JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
+          buildAndDecode (JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
       )
   , Test
       "encode-advanced"
       ( toLazyByteString $
-          encode
+          buildAndDecode
             ( JsonObj
                 [ ("a", JsonStr "Hello!\\\"")
                 , ("b", JsonBool True)
