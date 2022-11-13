@@ -152,20 +152,20 @@ pWord8 = Parser uncons
 -- | A parser that parses a Word16.
 pWord16 :: forall l. Uncons l Word8 => Parser l Word16
 pWord16 = do
-  b0 :: Word16 <- fromIntegral <$> pWord8
   b1 :: Word16 <- fromIntegral <$> pWord8
+  b0 :: Word16 <- fromIntegral <$> pWord8
   pure $ shift b0 8 + b1
 
 -- | A parser that parses a Word32.
 pWord32 :: forall l. Uncons l Word8 => Parser l Word32
 pWord32 = do
-  b0 :: Word32 <- fromIntegral <$> pWord16
   b1 :: Word32 <- fromIntegral <$> pWord16
+  b0 :: Word32 <- fromIntegral <$> pWord16
   pure $ shift b0 16 + b1
 
 -- | A parser that parses a Word64.
 pWord64 :: forall l. Uncons l Word8 => Parser l Word64
 pWord64 = do
-  b0 :: Word64 <- fromIntegral <$> pWord32
   b1 :: Word64 <- fromIntegral <$> pWord32
+  b0 :: Word64 <- fromIntegral <$> pWord32
   pure $ shift b0 16 + b1
