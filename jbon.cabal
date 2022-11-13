@@ -27,7 +27,9 @@ executable jbon
   main-is: Main.hs
   other-modules:
       Core
+      Indexed
       Jbon.Build
+      Jbon.Decode
       Jbon.Encode
       Jbon.Jbon
       Json

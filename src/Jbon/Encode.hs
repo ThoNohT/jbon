@@ -1,7 +1,7 @@
-module Jbon.Encode (encode) where
+module Jbon.Encode (EncodingSettings (..), WordSize (..), encode, w16ToSettings) where
 
 import Core (safeMaximum)
-import Data.Bits (shift)
+import Data.Bits (Bits ((.&.)), shift)
 import Data.ByteString.Builder qualified as BSB
 import Data.List (genericLength)
 import Data.Maybe (fromMaybe)
@@ -12,7 +12,7 @@ import Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt
 -- | Word size
 
 -- | The number of bits to use for specific types of numbers in the encoded jbon data.
-data WordSize = W8 | W16 | W32 | W64
+data WordSize = W8 | W16 | W32 | W64 deriving (Show)
 
 -- | Determines the word size in which a value fits.
 wordSize :: Word64 -> WordSize
@@ -29,6 +29,14 @@ wordSizeBits W16 = 1
 wordSizeBits W32 = 2
 wordSizeBits W64 = 3
 
+-- | TODO: Documentation.
+bitsWordSize :: Word16 -> Maybe WordSize
+bitsWordSize 0 = Just W8
+bitsWordSize 1 = Just W16
+bitsWordSize 2 = Just W32
+bitsWordSize 3 = Just W64
+bitsWordSize _ = Nothing
+
 -- Encoding settings.
 
 -- | Settings to use when encoding or decoding jbon, these are encoded in the first two bytes after the jbon header.
@@ -41,6 +49,27 @@ data EncodingSettings = EncodingSettings
   , intSize :: WordSize
   , decimalSize :: WordSize
   }
+  deriving (Show)
+
+settingsToW16 :: EncodingSettings -> Word16
+settingsToW16 settings =
+  wordSizeBits (numberOfObjects settings)
+    + shift (wordSizeBits $ numberOfFields settings) 2
+    + shift (wordSizeBits $ arrayLength settings) 4
+    + shift (wordSizeBits $ stringLength settings) 6
+    + shift (wordSizeBits $ objectNameLength settings) 8
+    + shift (wordSizeBits $ intSize settings) 10
+    + shift (wordSizeBits $ decimalSize settings) 12
+
+w16ToSettings :: Word16 -> Maybe EncodingSettings
+w16ToSettings word =
+  EncodingSettings <$> bitsWordSize (word .&. 3)
+    <*> bitsWordSize (shift word (-2) .&. 3)
+    <*> bitsWordSize (shift word (-4) .&. 3)
+    <*> bitsWordSize (shift word (-6) .&. 3)
+    <*> bitsWordSize (shift word (-8) .&. 3)
+    <*> bitsWordSize (shift word (-10) .&. 3)
+    <*> bitsWordSize (shift word (-12) .&. 3)
 
 -- | Creates encoding settings given a json value, and the calculated jbon objects.
 makeSettings :: JsonValue -> [(Word64, JbonObject)] -> EncodingSettings
@@ -82,13 +111,7 @@ encode objs value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> body
  where
   settings = makeSettings value objs
 
-  settingsHeader =
-    BSB.word16LE $
-      wordSizeBits (numberOfObjects settings)
-        + shift (wordSizeBits $ numberOfFields settings) 2
-        + shift (wordSizeBits $ arrayLength settings) 4
-        + shift (wordSizeBits $ stringLength settings) 6
-        + shift (wordSizeBits $ objectNameLength settings) 8
+  settingsHeader = BSB.word16LE $ settingsToW16 settings
 
   objsHeader :: BSB.Builder
   objsHeader =
@@ -101,7 +124,7 @@ encode objs value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> body
 -- | Encodes a single jbon object using the provided encoding settings.
 encodeJbonObject :: EncodingSettings -> JbonObject -> BSB.Builder
 encodeJbonObject settings (JbonObject inherit fields _) =
-  encodeNumber (numberOfObjects settings) (fromMaybe 0 inherit)
+  encodeNumber (numberOfObjects settings) (fromMaybe minBound inherit)
     <> encodeLength (numberOfFields settings) fields
     <> mconcat (encodeField settings <$> fields)
 

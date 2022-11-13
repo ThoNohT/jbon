@@ -1,4 +1,12 @@
-module Json (JsonValue (..), JsonNumber (..), parseJsonValue, maxStringLength, maxArrayLength, maxInt, maxDecimal) where
+module Json (
+  JsonValue (..),
+  JsonNumber (..),
+  parseJsonValue,
+  maxStringLength,
+  maxArrayLength,
+  maxInt,
+  maxDecimal,
+) where
 
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
@@ -59,15 +67,15 @@ data JsonNumber where
 
 -- | Attempts to parse a json value from a string.
 parseJsonValue :: String -> Maybe JsonValue
-parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
+parseJsonValue input = fst <$> runParser (entire $ inWs jsonValue) input
  where
-  jsonNull :: Parser JsonValue
+  jsonNull :: Parser String JsonValue
   jsonNull = JsonNull <$ pString "null"
 
-  jsonBool :: Parser JsonValue
+  jsonBool :: Parser String JsonValue
   jsonBool = (JsonBool True <$ pString "true") <|> (JsonBool False <$ pString "false")
 
-  jsonNumber :: Parser JsonValue
+  jsonNumber :: Parser String JsonValue
   jsonNumber = JsonNum <$> negP <*> (decP <|> intP)
    where
     negP = pCheck (== '-')
@@ -80,10 +88,10 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
 
     intP = JsonInt <$> pInt
 
-  stringLiteral :: Parser String
+  stringLiteral :: Parser String String
   stringLiteral = concat <$> (pChar '"' *> many stringCharP <* pChar '"')
    where
-    stringCharP :: Parser String
+    stringCharP :: Parser String String
     stringCharP = escaped <|> unescaped
 
     unescaped = (: []) <$> pCond (\c -> c /= '"' && c /= '\\')
@@ -93,15 +101,15 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
       ch <- pCond (const True)
       pure [pre, ch]
 
-  jsonString :: Parser JsonValue
+  jsonString :: Parser String JsonValue
   jsonString = JsonStr <$> stringLiteral
 
-  jsonArray :: Parser JsonValue
+  jsonArray :: Parser String JsonValue
   jsonArray = JsonArr <$> ((pChar '[' <* ws) *> elements <* inWs (ws *> pChar ']'))
    where
     elements = sepBy (inWs $ pChar ',') jsonValue
 
-  jsonObject :: Parser JsonValue
+  jsonObject :: Parser String JsonValue
   jsonObject = do
     void $ pChar '{' <* ws
     values <- sepBy (inWs $ pChar ',') pair
@@ -114,5 +122,5 @@ parseJsonValue input = snd <$> runParser (entire $ inWs jsonValue) input
       value <- jsonValue
       pure (key, value)
 
-  jsonValue :: Parser JsonValue
+  jsonValue :: Parser String JsonValue
   jsonValue = jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|> jsonObject

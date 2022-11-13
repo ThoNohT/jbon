@@ -1,9 +1,11 @@
 module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify) where
-import Json (JsonValue (..))
-import Data.Word (Word64)
-import Jbon.Jbon (JbonObject (..))
-import Core (Indexed, indexed, firstJust)
+
+import Core (firstJust)
 import Data.List (nub, sortOn)
+import Data.Word (Word64)
+import Indexed (Indexed, indexed)
+import Jbon.Jbon (JbonObject (..))
+import Json (JsonValue (..))
 
 -- | Creates jbon object definitions for all objects in the provided json value.
 getObjectDefinitions :: JsonValue -> [(Word64, JbonObject)]
