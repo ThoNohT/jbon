@@ -11,7 +11,7 @@ import Data.Maybe (fromJust)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (EncodingSettings (..), WordSize (..), encode, settingsToW16, w16ToSettings)
+import Jbon.Encode (EncodingSettings (..), WordSize (..), encodeJbon, settingsToW16, w16ToSettings)
 import Json (JsonNumber (..), JsonValue (..), encodeJsonValue, parseJsonValue)
 import Parsing (pWord16, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
@@ -21,7 +21,7 @@ data Test = Test {testName :: String, runTest :: ByteString}
 
 -- | Helper to build jbon objects and encode them in one go for tests.
 buildAndEncode :: JsonValue -> Builder
-buildAndEncode value = encode objs value where objs = getObjectDefinitions value
+buildAndEncode value = encodeJbon objs value where objs = getObjectDefinitions value
 
 -- | A list containing all available tests.
 tests :: [Test]

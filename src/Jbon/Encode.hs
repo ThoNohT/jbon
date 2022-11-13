@@ -1,4 +1,4 @@
-module Jbon.Encode (EncodingSettings (..), WordSize (..), encode, settingsToW16, w16ToSettings) where
+module Jbon.Encode (EncodingSettings (..), WordSize (..), encodeJbon, settingsToW16, w16ToSettings, makeSettings) where
 
 import Core (safeMaximum)
 import Data.Bits (Bits ((.&.)), shift)
@@ -106,8 +106,8 @@ encodeStr stringLength str = encodeLength stringLength str <> BSB.stringUtf8 str
 -- Jbon related encoders
 
 -- | Encodes a json value to jbon.
-encode :: [(Word64, JbonObject)] -> JsonValue -> BSB.Builder
-encode objs value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> body
+encodeJbon :: [(Word64, JbonObject)] -> JsonValue -> BSB.Builder
+encodeJbon objs value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> body
  where
   settings = makeSettings value objs
 
