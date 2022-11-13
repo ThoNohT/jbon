@@ -1,16 +1,19 @@
 module Test (run, runSingleTest, update) where
 
 import Data.ByteString.Builder (Builder, toLazyByteString)
+import Data.ByteString.Builder qualified as BSB
 import Data.ByteString.Internal as BSI (w2c)
 import Data.ByteString.Lazy as BSL (ByteString, readFile, unpack, writeFile)
 import Data.ByteString.Lazy.Char8 (pack)
 import Data.Functor ((<&>))
 import Data.List (find)
+import Data.Maybe (fromJust)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (encode)
+import Jbon.Encode (EncodingSettings (..), WordSize (..), encode, settingsToW16, w16ToSettings)
 import Json (JsonNumber (..), JsonValue (..), parseJsonValue)
+import Parsing (pWord16, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
@@ -36,6 +39,7 @@ tests =
               , ("c", JsonObj [("b", JsonNull)])
               ]
           )
+        , ("longarray", JsonArr $ replicate 1000 JsonNull)
         ]
    in [ Test
           "parsing json"
@@ -93,6 +97,13 @@ tests =
                         ]
                 ]
           )
+      , Test
+          "settings"
+          ( let settings = EncodingSettings W8 W16 W32 W64 W8 W16 W32
+                dec = pack . show . w16ToSettings . fst . fromJust . runParser pWord16
+                enc = toLazyByteString . BSB.word16LE . settingsToW16
+             in dec $ enc settings
+          )
       ]
         <> (testObjects <&> (\(n, o) -> Test ("encode-" <> n) (toLazyByteString $ buildAndEncode o)))
         <> ( testObjects
@@ -103,7 +114,7 @@ tests =
 run :: IO ()
 run = do
   createDirectoryIfMissing True "./Tests/"
-  mapM_ (\(Test name result) -> runSingleTest' name result) tests
+  mapM_ (\(Test name result) -> runSingleTest' False name result) tests
 
 -- | Runs the test with the provided name, if it exists.
 runSingleTest :: String -> IO ()
@@ -113,11 +124,11 @@ runSingleTest name = do
     Nothing -> putStrLn $ "Test '" <> name <> "' not found."
     Just test -> do
       createDirectoryIfMissing True "./Tests/"
-      runSingleTest' name (runTest test)
+      runSingleTest' True name (runTest test)
 
 -- | Helper for running a single test.
-runSingleTest' :: String -> ByteString -> IO ()
-runSingleTest' name result = do
+runSingleTest' :: Bool -> String -> ByteString -> IO ()
+runSingleTest' showOutputOnSuccess name result = do
   let fp = "./Tests/" <> name <> ".txt"
   exists <- doesFileExist fp
   if not exists
@@ -125,7 +136,9 @@ runSingleTest' name result = do
     else do
       fileContents <- BSL.readFile fp
       if fileContents == result
-        then statusMsg "OK" "Test succeeded."
+        then do
+          statusMsg "OK" "Test succeeded."
+          if showOutputOnSuccess then putStrLn $ BSI.w2c <$> BSL.unpack result else pure ()
         else do
           statusMsg "ERROR" "Test result mismatch, got:"
           putStrLn $ BSI.w2c <$> BSL.unpack result

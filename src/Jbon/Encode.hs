@@ -1,4 +1,4 @@
-module Jbon.Encode (EncodingSettings (..), WordSize (..), encode, w16ToSettings) where
+module Jbon.Encode (EncodingSettings (..), WordSize (..), encode, settingsToW16, w16ToSettings) where
 
 import Core (safeMaximum)
 import Data.Bits (Bits ((.&.)), shift)
