@@ -2,6 +2,7 @@ module Json (
   JsonValue (..),
   JsonNumber (..),
   parseJsonValue,
+  encodeJsonValue,
   maxStringLength,
   maxArrayLength,
   maxInt,
@@ -11,7 +12,7 @@ module Json (
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
 import Core (safeMaximum)
-import Data.List (genericLength)
+import Data.List (genericLength, intercalate)
 import Data.Word (Word64)
 import Parsing (Parser (..), entire, inWs, pChar, pCheck, pCond, pInt, pString, sepBy, ws)
 
@@ -73,7 +74,7 @@ parseJsonValue input = fst <$> runParser (entire $ inWs jsonValue) input
   jsonNull = JsonNull <$ pString "null"
 
   jsonBool :: Parser String JsonValue
-  jsonBool = (JsonBool True <$ pString "true") <|> (JsonBool False <$ pString "false")
+  jsonBool = JsonBool True <$ pString "true" <|> JsonBool False <$ pString "false"
 
   jsonNumber :: Parser String JsonValue
   jsonNumber = JsonNum <$> negP <*> (decP <|> intP)
@@ -83,8 +84,7 @@ parseJsonValue input = fst <$> runParser (entire $ inWs jsonValue) input
     decP = do
       pre <- pInt
       void $ pChar '.'
-      post <- pInt
-      pure $ JsonDecimal pre post
+      JsonDecimal pre <$> pInt
 
     intP = JsonInt <$> pInt
 
@@ -105,7 +105,7 @@ parseJsonValue input = fst <$> runParser (entire $ inWs jsonValue) input
   jsonString = JsonStr <$> stringLiteral
 
   jsonArray :: Parser String JsonValue
-  jsonArray = JsonArr <$> ((pChar '[' <* ws) *> elements <* inWs (ws *> pChar ']'))
+  jsonArray = JsonArr <$> (pChar '[' <* ws *> elements <* inWs (ws *> pChar ']'))
    where
     elements = sepBy (inWs $ pChar ',') jsonValue
 
@@ -124,3 +124,19 @@ parseJsonValue input = fst <$> runParser (entire $ inWs jsonValue) input
 
   jsonValue :: Parser String JsonValue
   jsonValue = jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|> jsonObject
+
+encodeJsonValue :: JsonValue -> String
+encodeJsonValue JsonNull = "null"
+encodeJsonValue (JsonBool False) = "false"
+encodeJsonValue (JsonBool True) = "true"
+encodeJsonValue (JsonNum isNeg num) = if isNeg then "-" else "" <> encodeJsonNumber num
+encodeJsonValue (JsonStr str) = "\"" <> str <> "\""
+encodeJsonValue (JsonArr values) = "[" <> intercalate ", " (encodeJsonValue <$> values) <> "]"
+encodeJsonValue (JsonObj fields) = "{" <> intercalate ", " (encodeField <$> fields) <> "}"
+
+encodeJsonNumber :: JsonNumber -> String
+encodeJsonNumber (JsonInt i) = show i
+encodeJsonNumber (JsonDecimal i d) = show i <> "." <> show d
+
+encodeField :: (String, JsonValue) -> String
+encodeField (name, val) = show name <> ":" <> encodeJsonValue val

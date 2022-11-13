@@ -12,7 +12,7 @@ import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), encode, settingsToW16, w16ToSettings)
-import Json (JsonNumber (..), JsonValue (..), parseJsonValue)
+import Json (JsonNumber (..), JsonValue (..), encodeJsonValue, parseJsonValue)
 import Parsing (pWord16, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
@@ -40,7 +40,7 @@ tests =
               ]
           )
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
-        , ("longstring", JsonStr $ replicate 66000 'A' )
+        , ("longstring", JsonStr $ replicate 66000 'A')
         ]
    in [ Test
           "parsing json"
@@ -107,6 +107,7 @@ tests =
           )
       ]
         <> (testObjects <&> (\(n, o) -> Test ("encode-" <> n) (toLazyByteString $ buildAndEncode o)))
+        <> (testObjects <&> (\(n, o) -> Test ("jsonencode-" <> n) (pack $ encodeJsonValue o)))
         <> ( testObjects
               <&> (\(n, o) -> Test ("decode-" <> n) (pack $ show $ decodeJbonValue $ toLazyByteString $ buildAndEncode o))
            )
