@@ -4,9 +4,10 @@ import Control.Monad (replicateM, void)
 import Core (notMinBound)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.Word (Word64)
-import Indexed (Indexed, index, indexed)
+import Indexed (Indexed, indexed)
+import Jbon.Build (buildDefinitions)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), w16ToSettings)
-import Jbon.Jbon (JbonObject (..), mergeObject)
+import Jbon.Jbon (JbonObject (..))
 import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8)
 
 -- | Parses a number with the provided size.
@@ -56,16 +57,3 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     idx <- parseNumber (numberOfFields settings)
     value <- parseString (stringLength settings)
     pure (idx, value)
-
-  -- Assumes that in the input, dependencies are only possible on objects defined further to the left,
-  -- so processing an object that depends on something means the depended upon object was already processed.
-  buildDefinitions :: Indexed (Maybe Word64, Indexed String) -> Maybe (Indexed JbonObject)
-  buildDefinitions deps = go [] deps
-   where
-    go :: Indexed JbonObject -> Indexed (Maybe Word64, Indexed String) -> Maybe (Indexed JbonObject)
-    go acc [] = Just $ reverse acc
-    go acc ((idx, (dep, fields)) : xs) = case dep of
-      Nothing -> go ((idx, JbonObject dep fields (snd <$> fields)) : acc) xs
-      Just depIdx -> case index depIdx acc of
-        Nothing -> Nothing -- Invalid dependency reference.
-        Just parent -> go ((idx, mergeObject depIdx parent fields) : acc) xs

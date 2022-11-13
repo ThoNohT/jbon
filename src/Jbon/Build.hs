@@ -1,9 +1,9 @@
-module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify) where
+module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify, buildDefinitions) where
 
 import Core (firstJust)
 import Data.List (nub, sortOn)
 import Data.Word (Word64)
-import Indexed (Indexed, indexed)
+import Indexed (Indexed, index, indexed)
 import Jbon.Jbon (JbonObject (..))
 import Json (JsonValue (..))
 
@@ -63,3 +63,34 @@ tryGetIndexedSubList l1 l2 = reverse <$> go [] 0 (sortOn fst l1) (sortOn fst l2)
           else go ((insertAt, yn) : acc) insertAt as ys
       -- bs is longer than as, so we can simply append all elements.
       ([], ys) -> Just $ ((insertAt,) . snd <$> reverse ys) <> acc
+
+{- | Merges an object and a list of field definitions into a new object, inserting the elements in the
+ specified locations.
+-}
+mergeObject :: Word64 -> JbonObject -> Indexed String -> JbonObject
+mergeObject parentIdx (JbonObject _ _ fields) newFields =
+  JbonObject (Just parentIdx) newFields $ go [] (indexed 1 fields) newFields
+ where
+  go :: [String] -> Indexed String -> Indexed String -> [String]
+  go acc [] [] = reverse acc
+  go acc fs [] = reverse acc <> (snd <$> fs)
+  go acc [] es = reverse acc <> (snd <$> es)
+  go acc ((fi, f) : fs) ((ei, e) : es) =
+    if ei < fi
+      then go (e : acc) ((fi, f) : fs) es
+      else go (f : acc) fs ((ei, e) : es)
+
+{- | Builds JbonObjects from a list of field additions, and dependency indicators.
+ |  Assumes that in the input, dependencies are only possible on objects defined further to the left,
+ | so processing an object that depends on something means the depended upon object was already processed.
+-}
+buildDefinitions :: Indexed (Maybe Word64, Indexed String) -> Maybe (Indexed JbonObject)
+buildDefinitions = go []
+ where
+  go :: Indexed JbonObject -> Indexed (Maybe Word64, Indexed String) -> Maybe (Indexed JbonObject)
+  go acc [] = Just $ reverse acc
+  go acc ((idx, (dep, fields)) : xs) = case dep of
+    Nothing -> go ((idx, JbonObject dep fields (snd <$> fields)) : acc) xs
+    Just depIdx -> case index depIdx acc of
+      Nothing -> Nothing -- Invalid dependency reference.
+      Just parent -> go ((idx, mergeObject depIdx parent fields) : acc) xs
