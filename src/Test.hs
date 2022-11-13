@@ -40,6 +40,7 @@ tests =
               ]
           )
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
+        , ("longstring", JsonStr $ replicate 66000 'A' )
         ]
    in [ Test
           "parsing json"
