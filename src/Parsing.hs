@@ -2,6 +2,7 @@ module Parsing (
   Uncons (..),
   Parser (..),
   liftP,
+  withError,
   pElem,
   pChar,
   pString,
@@ -63,13 +64,19 @@ instance Applicative (Parser l) where
   Parser pf <*> Parser pv = Parser $ pf >=> \(f, rest) -> first f <$> pv rest
 
 instance Alternative (Parser l) where
-  empty = Parser $ const $ error "empty"
+  empty = Parser $ const $ Left "empty"
   Parser a <|> Parser b = Parser $ \input -> a input <|> b input
 
 instance Monad (Parser l) where
   Parser a >>= f = Parser $ a >=> \(a', rest) -> runParser (f a') rest
 
 -- Generic parsers.
+
+-- | Prepends an error message to the error of a parser.
+withError :: String -> Parser l a -> Parser l a
+withError err p = Parser $ \input -> case runParser p input of
+  Left e -> Left $ err <> ": " <> e
+  Right r -> Right r
 
 -- | Lifts a Maybe into a Parser that doesn't consume anything but returns the value if Some.
 liftP :: forall l a. String -> Maybe a -> Parser l a

@@ -61,6 +61,9 @@ analyzeJson filePath = do
       putStrLn "[Settings]:"
       print settings
       putStrLn "\n==========\n"
+      putStrLn "[Value]:"
+      print json
+      putStrLn "\n==========\n"
 
 decodeFile :: FilePath -> IO ()
 decodeFile filePath = do

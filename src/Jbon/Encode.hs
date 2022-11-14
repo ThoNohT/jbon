@@ -2,7 +2,17 @@ module Jbon.Encode (EncodingSettings (..), WordSize (..), encodeJbon, settingsTo
 
 import Core (safeMaximum)
 import Data.Bits (Bits ((.&.)), shift)
-import Data.ByteString.Builder qualified as BSB
+import Data.ByteString.Builder qualified as BSB (
+  Builder,
+  string8,
+  stringUtf8,
+  toLazyByteString,
+  word16LE,
+  word32LE,
+  word64LE,
+  word8,
+ )
+import Data.ByteString.Lazy qualified as BSL (unpack)
 import Data.List (genericLength)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -101,7 +111,9 @@ encodeLength ws = encodeNumber ws . genericLength
  | and then UTF-8 encodes the string.
 -}
 encodeStr :: WordSize -> String -> BSB.Builder
-encodeStr stringLength str = encodeLength stringLength str <> BSB.stringUtf8 str
+encodeStr stringLength str =
+  let encStr = BSB.stringUtf8 str
+   in encodeLength stringLength (BSL.unpack $ BSB.toLazyByteString encStr) <> encStr
 
 -- Jbon related encoders
 

@@ -3,14 +3,16 @@ module Jbon.Decode (decodeJbonValue) where
 import Control.Applicative (Alternative (empty))
 import Control.Monad (replicateM, void)
 import Core (notMinBound)
+import Data.ByteString (pack)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
 import Indexed (Indexed, index, indexed)
 import Jbon.Build (buildDefinitions)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), w16ToSettings)
 import Jbon.Jbon (JbonObject (..))
 import Json (JsonNumber (..), JsonValue (..))
-import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8)
+import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8, withError)
 
 -- | Parses a number with the provided size.
 parseNumber :: String -> WordSize -> Parser ByteString Word64
@@ -23,7 +25,8 @@ parseNumber err W64 = pWord64 err
 parseString :: String -> WordSize -> Parser ByteString String
 parseString err size = do
   len <- parseNumber (err <> " string length") size
-  replicateM (fromIntegral len) $ pElem (err <> " string")
+  w8s <- withError "String" $ replicateM (fromIntegral len) $ pElem (err <> " string")
+  pure $ BSU.toString $ pack w8s
 
 -- | Decodes a byte string into a json value and its jbon definition. Returns Nothing if decoding fails.
 decodeJbonValue :: ByteString -> Either String (EncodingSettings, JsonValue, Indexed JbonObject)
@@ -75,12 +78,12 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     go 7 = JsonStr <$> parseString "Json string" (stringLength settings)
     go 8 = do
       arrLen <- parseNumber "Array length" (arrayLength settings)
-      JsonArr <$> replicateM (fromIntegral arrLen) (jsonValue settings objects)
+      JsonArr <$> withError "Array" (replicateM (fromIntegral arrLen) (jsonValue settings objects))
     go 9 = do
       objIndex <- parseNumber "Object index" (numberOfObjects settings)
       JbonObject _ _ fields <- liftP "Finding object by index" $ index objIndex objects
       JsonObj <$> mapM (\n -> (n,) <$> jsonValue settings objects) fields
-    go _ = empty
+    go i = withError ("Unknown element " <> show i) empty
 
     decimal :: Parser ByteString JsonNumber
     decimal =

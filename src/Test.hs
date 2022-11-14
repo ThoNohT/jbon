@@ -8,7 +8,6 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
-import Data.Word (Word16)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
@@ -42,6 +41,7 @@ tests =
           )
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
         , ("longstring", JsonStr $ replicate 66000 'A')
+        , ("utfstring", JsonArr [ JsonStr "▶X", JsonBool True ])
         ]
    in [ Test
           "parsing json"
