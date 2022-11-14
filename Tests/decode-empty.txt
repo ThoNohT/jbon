@@ -1,1 +1,1 @@
-Just (EncodingSettings {numberOfObjects = W8, numberOfFields = W8, arrayLength = W8, stringLength = W8, objectNameLength = W8, intSize = W8, decimalSize = W8},JsonObj [],[(1,JbonObject Nothing [] [])])
+Right (EncodingSettings {numberOfObjects = W8, numberOfFields = W8, arrayLength = W8, stringLength = W8, objectNameLength = W8, intSize = W8, decimalSize = W8},JsonObj [],[(1,JbonObject Nothing [] [])])

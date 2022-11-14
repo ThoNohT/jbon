@@ -32,10 +32,11 @@ encodeFile :: FilePath -> IO ()
 encodeFile filePath = do
   str <- readFile filePath
   case parseJsonValue str of
-    Nothing -> do
+    Left err -> do
       putStrLn "Unable to parse Json"
+      putStrLn err
       exitFailure
-    Just json -> do
+    Right json -> do
       let defs = getObjectDefinitions json
       let jbon = encodeJbon defs json
       let outFn = filePath <> ".jbon"
@@ -46,10 +47,11 @@ analyzeJson :: FilePath -> IO ()
 analyzeJson filePath = do
   str <- readFile filePath
   case parseJsonValue str of
-    Nothing -> do
+    Left err -> do
       putStrLn "Unable to parse Json"
+      putStrLn err
       exitFailure
-    Just json -> do
+    Right json -> do
       let defs = getObjectDefinitions json
       let settings = makeSettings json defs
 
@@ -64,10 +66,11 @@ decodeFile :: FilePath -> IO ()
 decodeFile filePath = do
   input <- BSL.readFile filePath
   case decodeJbonValue input of
-    Nothing -> do
+    Left err -> do
       putStrLn "Unable to parse Jbon"
+      putStrLn err
       exitFailure
-    Just (settings, json, defs) -> do
+    Right (settings, json, defs) -> do
       putStrLn "[Definitions]:"
       print defs
       putStrLn "\n==========\n"
@@ -82,10 +85,11 @@ analyzeJbon :: FilePath -> IO ()
 analyzeJbon filePath = do
   input <- BSL.readFile filePath
   case decodeJbonValue input of
-    Nothing -> do
+    Left err -> do
       putStrLn "Unable to parse Jbon"
+      putStrLn err
       exitFailure
-    Just (settings, _, defs) -> do
+    Right (settings, _, defs) -> do
       putStrLn "[Definitions]:"
       print defs
       putStrLn "\n==========\n"

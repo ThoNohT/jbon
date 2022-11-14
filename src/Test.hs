@@ -5,9 +5,10 @@ import Data.ByteString.Builder qualified as BSB
 import Data.ByteString.Internal as BSI (w2c)
 import Data.ByteString.Lazy as BSL (ByteString, readFile, unpack, writeFile)
 import Data.ByteString.Lazy.Char8 (pack)
+import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
-import Data.Maybe (fromJust)
+import Data.Word (Word16)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
@@ -101,7 +102,7 @@ tests =
       , Test
           "settings"
           ( let settings = EncodingSettings W8 W16 W32 W64 W8 W16 W32
-                dec = pack . show . w16ToSettings . fst . fromJust . runParser pWord16
+                dec = pack . show . w16ToSettings . fst . fromRight (0, mempty) . runParser (pWord16 "Settings word16")
                 enc = toLazyByteString . BSB.word16LE . settingsToW16
              in dec $ enc settings
           )
