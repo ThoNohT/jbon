@@ -4,6 +4,7 @@ import Control.Applicative (Alternative (empty))
 import Control.Monad (replicateM, void)
 import Core (notMinBound)
 import Data.ByteString (pack)
+import Data.ByteString.Internal qualified as BSI (c2w)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
@@ -34,7 +35,7 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
  where
   jbonDocument :: Parser ByteString (EncodingSettings, JsonValue, Indexed JbonObject)
   jbonDocument = do
-    void jbonHeader
+    jbonHeader
     settings <- liftP "Settings conversion" . w16ToSettings =<< pWord16 "Jbon settings w16"
     defs <- definitions settings
     objects <- liftP "Definition building" $ buildDefinitions defs
@@ -42,8 +43,8 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
 
     pure (settings, value, objects)
 
-  jbonHeader :: Parser ByteString String
-  jbonHeader = pString "JBON"
+  jbonHeader :: Parser ByteString ()
+  jbonHeader = void $ pString (BSI.c2w <$> "JBON")
 
   definitions :: EncodingSettings -> Parser ByteString (Indexed (Maybe Word64, Indexed String))
   definitions settings = do

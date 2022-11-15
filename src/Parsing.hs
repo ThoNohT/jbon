@@ -26,8 +26,6 @@ import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (first))
 import Data.Bits (shift)
 import Data.ByteString qualified as BS (ByteString, uncons)
-import Data.ByteString.Char8 qualified as BSC (uncons)
-import Data.ByteString.Internal as BSI (w2c)
 import Data.ByteString.Lazy qualified as BSL (ByteString, uncons)
 import Data.Char (isDigit, isSpace)
 import Data.Either.Combinators (maybeToRight)
@@ -38,7 +36,7 @@ import Text.Read (readMaybe)
 {- | Type class for sequence types that can be unconsed, taking the first element from the sequence,
  | and returning this element and the remaining sequence, or None if the sequence is empty.
 -}
-class Uncons l a where
+class Uncons l a | l -> a where
   uncons :: l -> Maybe (a, l)
 
 -- | All lists implement it with uncons from the List module.
@@ -47,14 +45,8 @@ instance Uncons [a] a where uncons = L.uncons
 -- | Uncons for Strict ByteString.
 instance Uncons BS.ByteString Word8 where uncons = BS.uncons
 
--- | Uncons for Strict Bytestring with Chars.
-instance Uncons BS.ByteString Char where uncons = BSC.uncons
-
 -- | Uncons for Lazy ByteString.
 instance Uncons BSL.ByteString Word8 where uncons = BSL.uncons
-
--- | Uncons for Lazy ByteString with Chars.
-instance Uncons BSL.ByteString Char where uncons l = first BSI.w2c <$> BSL.uncons l
 
 -- | A parser.
 newtype Parser l a = Parser {runParser :: l -> Either String (a, l)} deriving (Functor)
@@ -110,20 +102,15 @@ notNull err p = p >>= liftP err . \v -> if null v then Nothing else Just v
 sepBy :: forall l a b. Parser l a -> Parser l b -> Parser l [b]
 sepBy sep elmt = (:) <$> elmt <*> many (sep *> elmt) <|> pure []
 
--- TODO: Figure out how to make this work.
--- end :: forall l a. Uncons l a => Parser l ()
--- end = Parser $ \input -> case uncons @l @a input of
---   Just _ -> Nothing
---   Nothing -> Just ((), input)
-
-endC :: forall l. Uncons l Char => String -> Parser l ()
-endC err = Parser $ \input -> case uncons input of
-  Just (_ :: Char, _) -> Left err
+-- | A parser that succeeds only when it is at the end of the input.
+end :: forall l a. Uncons l a => String -> Parser l ()
+end err = Parser $ \input -> case uncons input of
+  Just _ -> Left err
   Nothing -> Right ((), input)
 
 -- | A parser that takes another parser, and fails if it leaves any input.
 entire :: forall l a. Uncons l Char => String -> Parser l a -> Parser l a
-entire err p = p <* endC err
+entire err p = p <* end err
 
 -- Char based parsers.
 
@@ -132,12 +119,12 @@ pElem :: forall l a. Uncons l a => String -> Parser l a
 pElem err = pCond err (const True)
 
 -- | A parser that parses a single character.
-pChar :: forall l. Uncons l Char => String -> Char -> Parser l Char
+pChar :: forall l a. (Eq a, Uncons l a) => String -> a -> Parser l a
 pChar err c = pCond err (== c)
 
 -- | A parser that parses a specific string.
-pString :: forall l. Uncons l Char => String -> Parser l String
-pString s = sequenceA $ pChar ("Literal '" <> s <> "'") <$> s
+pString :: forall l a. (Eq a, Show a, Uncons l a) => [a] -> Parser l [a]
+pString s = sequenceA $ pChar ("Literal '" <> show s <> "'") <$> s
 
 -- | A parser that parses an integer.
 pInt :: forall l. Uncons l Char => String -> Parser l Word64
