@@ -126,7 +126,7 @@ tests =
              in (pack . unlines)
                   [ show $ gatherDuplicates settings $ JsonArr [JsonNull, JsonNull, JsonNull, JsonNull]
                   , let arr = JsonArr $ replicate 5 (JsonBool True)
-                     in show $ gatherDuplicates settings $ JsonArr [arr, arr, arr]
+                     in show $ gatherDuplicates settings $ JsonArr [arr, arr, arr, JsonBool True]
                   ]
           )
       , Test "countValues" (pack $ unlines $ (\(n, v) -> n <> ": " <> show (countValues v)) <$> testObjects)
