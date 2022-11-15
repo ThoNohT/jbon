@@ -9,7 +9,7 @@ import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
 import Indexed (Indexed, index, indexed)
-import Jbon.Build (buildDefinitions)
+import Jbon.Build (buildDefinitions, expandJsonValue)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), w16ToSettings)
 import Jbon.Jbon (JbonObject (..))
 import Json (JsonNumber (..), JsonValue (..))
@@ -39,12 +39,25 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     settings <- liftP "Settings conversion" . w16ToSettings =<< pWord16 "Jbon settings w16"
     defs <- definitions settings
     objects <- liftP "Definition building" $ buildDefinitions defs
+    refs <- references settings objects
     value <- jsonValue settings objects
+    expandedValue <- liftP "Expand references" $ expandJsonValue refs value
 
-    pure (settings, value, objects)
+    pure (settings, expandedValue, objects)
 
   jbonHeader :: Parser ByteString ()
   jbonHeader = void $ pString (BSI.c2w <$> "JBON")
+
+  references :: EncodingSettings -> Indexed JbonObject -> Parser ByteString (Indexed JsonValue)
+  references settings objs = do
+    nRefs <-
+      parseNumber
+        "Number of references"
+        (numberOfReferences settings)
+
+    replicateM
+      (fromIntegral nRefs)
+      ((,) <$> parseNumber "Reference index" (numberOfReferences settings) <*> jsonValue settings objs)
 
   definitions :: EncodingSettings -> Parser ByteString (Indexed (Maybe Word64, Indexed String))
   definitions settings = do
@@ -84,6 +97,9 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
       objIndex <- parseNumber "Object index" (numberOfObjects settings)
       JbonObject _ _ fields <- liftP "Finding object by index" $ index objIndex objects
       JsonObj <$> mapM (\n -> (n,) <$> jsonValue settings objects) fields
+    go 10 = do
+      refIndex <- parseNumber "Reference index" (numberOfReferences settings)
+      pure $ JsonRef refIndex
     go i = withError ("Unknown element " <> show i) empty
 
     decimal :: Parser ByteString JsonNumber

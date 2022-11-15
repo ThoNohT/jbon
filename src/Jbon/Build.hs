@@ -1,4 +1,11 @@
-module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify, buildDefinitions, replaceValue) where
+module Jbon.Build (
+  getObjectDefinitions,
+  tryGetIndexedSubList,
+  minify,
+  buildDefinitions,
+  replaceValue,
+  expandJsonValue,
+) where
 
 import Core (firstJust)
 import Data.Bifunctor (Bifunctor (second))
@@ -101,3 +108,6 @@ replaceValue toReplace replaceWith replaceIn =
     JsonArr arr -> JsonArr $ replaceValue toReplace replaceWith <$> arr
     JsonObj fields -> JsonObj $ second (replaceValue toReplace replaceWith) <$> fields
     v -> v
+
+expandJsonValue :: Indexed JsonValue -> JsonValue -> Maybe JsonValue
+expandJsonValue refs val = undefined

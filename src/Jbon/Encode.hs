@@ -80,7 +80,7 @@ data EncodingSettings = EncodingSettings
   , objectNameLength :: WordSize
   , intSize :: WordSize
   , decimalSize :: WordSize
-  , numberOfCustomObjects :: WordSize
+  , numberOfReferences :: WordSize
   }
   deriving (Show)
 
@@ -93,7 +93,7 @@ settingsToW16 settings =
     + shift (wordSizeBits $ objectNameLength settings) 8
     + shift (wordSizeBits $ intSize settings) 10
     + shift (wordSizeBits $ decimalSize settings) 12
-    + shift (wordSizeBits $ numberOfCustomObjects settings) 14
+    + shift (wordSizeBits $ numberOfReferences settings) 14
 
 w16ToSettings :: Word16 -> Maybe EncodingSettings
 w16ToSettings word =
@@ -107,7 +107,7 @@ w16ToSettings word =
     <*> bitsWordSize (shift word (-12) .&. 3)
 
 -- | Creates encoding settings given a json value, and the calculated jbon objects.
-makeSettings :: JsonValue -> [(Word64, JbonObject)] -> EncodingSettings
+makeSettings :: JsonValue -> Indexed JbonObject -> EncodingSettings
 makeSettings value objs =
   EncodingSettings
     { numberOfObjects = wordSize $ genericLength objs
@@ -117,7 +117,7 @@ makeSettings value objs =
     , objectNameLength = wordSize $ safeMaximum $ maxFieldLength . snd <$> objs
     , intSize = wordSize $ maxInt value
     , decimalSize = wordSize $ maxDecimal value
-    , numberOfCustomObjects = W8 -- TODO: Fill in.
+    , numberOfReferences = W8 -- Filled in later.
     }
 
 -- General encoders
@@ -144,17 +144,30 @@ encodeStr stringLength str =
 -- Jbon related encoders
 
 -- | Encodes a json value to jbon.
-encodeJbon :: [(Word64, JbonObject)] -> JsonValue -> BSB.Builder
-encodeJbon objs value = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> body
+encodeJbon :: Indexed JbonObject -> JsonValue -> BSB.Builder
+encodeJbon objs value' = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> refsHeader <> body
  where
-  settings = makeSettings value objs
+  settings' = makeSettings value' objs
+  (value, refs) = gatherDuplicates settings' value'
+  settings = settings{numberOfReferences = wordSize $ genericLength refs}
 
+  settingsHeader :: BSB.Builder
   settingsHeader = BSB.word16LE $ settingsToW16 settings
 
   objsHeader :: BSB.Builder
   objsHeader =
     encodeLength (numberOfObjects settings) objs
       <> mconcat (encodeJbonObject settings . snd <$> objs)
+
+  refsHeader :: BSB.Builder
+  refsHeader =
+    encodeLength (numberOfReferences settings) refs
+      <> mconcat (encodeReference <$> refs)
+
+  encodeReference :: (Word64, JsonValue) -> BSB.Builder
+  encodeReference (idx, v) =
+    encodeNumber (numberOfReferences settings) idx
+      <> encodeValue settings objs v
 
   body :: BSB.Builder
   body = encodeValue settings objs value
@@ -172,7 +185,7 @@ encodeField settings (idx, str) =
   encodeNumber (numberOfFields settings) idx <> encodeStr (stringLength settings) str
 
 -- | Encodes a single json value using the provided encoding settings and jbon object definitions.
-encodeValue :: EncodingSettings -> [(Word64, JbonObject)] -> JsonValue -> BSB.Builder
+encodeValue :: EncodingSettings -> Indexed JbonObject -> JsonValue -> BSB.Builder
 encodeValue _ _ JsonNull = BSB.word8 0
 encodeValue _ _ (JsonBool False) = BSB.word8 1
 encodeValue _ _ (JsonBool True) = BSB.word8 2
@@ -192,7 +205,7 @@ encodeValue settings objs (JsonObj fields) =
   BSB.word8 9
     <> encodeNumber (numberOfObjects settings) (getObjectId fields objs)
     <> mconcat (encodeValue settings objs . snd <$> fields)
-encodeValue settings _ (JsonRef idx) = BSB.word8 10 <> encodeNumber (numberOfCustomObjects settings) idx
+encodeValue settings _ (JsonRef idx) = BSB.word8 10 <> encodeNumber (numberOfReferences settings) idx
 
 -- Optimization
 
@@ -258,7 +271,7 @@ valueSize settings (JsonArr arr) =
 valueSize settings (JsonObj fields) =
   1 + wordSizeNoBytes (numberOfObjects settings)
     + sum (valueSize settings . snd <$> fields)
-valueSize settings (JsonRef _) = 1 + wordSizeNoBytes (numberOfCustomObjects settings)
+valueSize settings (JsonRef _) = 1 + wordSizeNoBytes (numberOfReferences settings)
 
 {- | Finds all values in a JsonValue that have duplicates, and the number of times they occur.
  | The values are returned as a list sorted by their size in descending order.
