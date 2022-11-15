@@ -25,7 +25,6 @@ import Data.ByteString.Builder qualified as BSB (
 import Data.ByteString.Lazy qualified as BSL (unpack)
 import Data.Foldable (Foldable (foldl'))
 import Data.List (genericLength, sortOn, uncons)
-import Data.Map.Merge.Strict as Map (merge, preserveMissing', zipWithMatched)
 import Data.Map.Strict qualified as Map (Map, alter, empty, filter, toList)
 import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
@@ -210,24 +209,39 @@ gatherDuplicates settings val = go 0 [] val valueCounts
   go idx acc value counts =
     case uncons counts of
       Nothing -> (value, acc)
-      Just ((biggestVal, count), xs) ->
-        let -- Count the number of times all values occur in the biggest value.
-            -- Subtract this number  times the number of times the value occurs, minus one, since it is still defined
-            -- in the references, and values can also be replaced in there.
-            innerValueCounts = (* (count - 1)) <$> countValues biggestVal
-            --
-            -- Reduce the counts of the values, no need to reorder, since their sizes have not changed (we only
-            -- replaced values that are bigger than the ones in the list so far).
-            newCounts = subtractNums xs innerValueCounts
+      Just ((biggestVal, count), xs)
+        | refSize biggestVal count < valSize biggestVal count ->
+          let -- Count the number of times all values occur in the biggest value.
+              -- Subtract this number  times the number of times the value occurs, minus one, since it is still defined
+              -- in the references, and values can also be replaced in there.
+              innerValueCounts = (* (count - 1)) <$> countValues biggestVal
+              --
+              -- Reduce the counts of the values, no need to reorder, since their sizes have not changed (we only
+              -- replaced values that are bigger than the ones in the list so far).
+              newCounts = subtractNums xs innerValueCounts
 
-            -- Reduce the main value,
-            reducedValue = replaceValue biggestVal (JsonRef idx) value
+              -- Reduce the main value,
+              reducedValue = replaceValue biggestVal (JsonRef idx) value
 
-            -- Reduce all of the referenced values.
-            reducedAcc = second (replaceValue biggestVal (JsonRef idx)) <$> acc
-         in go (idx + 1) ((idx, biggestVal) : reducedAcc) reducedValue newCounts
+              -- Reduce all of the referenced values.
+              reducedAcc = second (replaceValue biggestVal (JsonRef idx)) <$> acc
+           in go (idx + 1) ((idx, biggestVal) : reducedAcc) reducedValue newCounts
+        | otherwise -> go idx acc value xs
 
--- | Returns the size in bytes that a Json value will take up in Jbon encoding.
+  -- The size of count references to a value in jbon.
+  refSize :: JsonValue -> Word64 -> Word64
+  refSize val' count =
+    refSize' -- Reference id.
+      + valueSize settings val' -- Reference value definition.
+      + refSize' * count -- References to reference id.
+   where
+    refSize' = wordSizeNoBytes $ wordSize count
+
+  -- The size of a value in jbon, given that it is used count times, without references.
+  valSize :: JsonValue -> Word64 -> Word64
+  valSize val' count = valueSize settings val' * count
+
+-- | Returns the size in bytes that a json value will take up in Jbon encoding.
 valueSize :: EncodingSettings -> JsonValue -> Word64
 valueSize _ JsonNull = 1
 valueSize _ (JsonBool _) = 1

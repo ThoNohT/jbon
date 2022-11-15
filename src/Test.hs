@@ -124,9 +124,13 @@ tests =
           "gatherDuplicates"
           ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8
              in (pack . unlines)
-                  [ show $ gatherDuplicates settings $ JsonArr [JsonNull, JsonNull, JsonNull, JsonNull]
+                  [ show $ gatherDuplicates settings $ JsonArr $ replicate 5 (JsonStr "Hello")
+                  , show $ gatherDuplicates settings $ JsonArr $ replicate 5 JsonNull
                   , let arr = JsonArr $ replicate 5 (JsonBool True)
                      in show $ gatherDuplicates settings $ JsonArr [arr, arr, arr, JsonBool True]
+                  , let str = JsonStr "A semi long string"
+                        arr = JsonArr $ replicate 5 str
+                     in show $ gatherDuplicates settings $ JsonArr [arr, arr, arr, JsonBool True, str]
                   ]
           )
       , Test "countValues" (pack $ unlines $ (\(n, v) -> n <> ": " <> show (countValues v)) <$> testObjects)

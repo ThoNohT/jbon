@@ -1,2 +1,4 @@
-(JsonArr [JsonRef 0,JsonRef 0,JsonRef 0,JsonRef 0],[(0,JsonNull)])
-(JsonArr [JsonRef 0,JsonRef 0,JsonRef 0,JsonRef 1],[(1,JsonBool True),(0,JsonArr [JsonRef 1,JsonRef 1,JsonRef 1,JsonRef 1,JsonRef 1])])
+(JsonArr [JsonRef 0,JsonRef 0,JsonRef 0,JsonRef 0,JsonRef 0],[(0,JsonStr "Hello")])
+(JsonArr [JsonNull,JsonNull,JsonNull,JsonNull,JsonNull],[])
+(JsonArr [JsonRef 0,JsonRef 0,JsonRef 0,JsonBool True],[(0,JsonArr [JsonBool True,JsonBool True,JsonBool True,JsonBool True,JsonBool True])])
+(JsonArr [JsonRef 0,JsonRef 0,JsonRef 0,JsonBool True,JsonRef 1],[(1,JsonStr "A semi long string"),(0,JsonArr [JsonRef 1,JsonRef 1,JsonRef 1,JsonRef 1,JsonRef 1])])
