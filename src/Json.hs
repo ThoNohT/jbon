@@ -24,7 +24,9 @@ data JsonValue where
   JsonStr :: String -> JsonValue
   JsonArr :: [JsonValue] -> JsonValue
   JsonObj :: [(String, JsonValue)] -> JsonValue
-  deriving (Eq, Show)
+  -- This value cannot be parsed, only created by making references for duplicate values.
+  JsonRef :: Word64 -> JsonValue
+  deriving (Eq, Show, Ord)
 
 -- | Determines the length of the longest string in a json value.
 maxStringLength :: JsonValue -> Word64
@@ -64,7 +66,7 @@ maxDecimal = \case
 data JsonNumber where
   JsonDecimal :: Word64 -> Word64 -> JsonNumber
   JsonInt :: Word64 -> JsonNumber
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 -- | Attempts to parse a json value from a string.
 parseJsonValue :: String -> Either String JsonValue
@@ -137,6 +139,8 @@ encodeJsonValue (JsonNum isNeg num) = if isNeg then "-" else "" <> encodeJsonNum
 encodeJsonValue (JsonStr str) = "\"" <> str <> "\""
 encodeJsonValue (JsonArr values) = "[" <> intercalate ", " (encodeJsonValue <$> values) <> "]"
 encodeJsonValue (JsonObj fields) = "{" <> intercalate ", " (encodeField <$> fields) <> "}"
+-- This should not be json encoded, but just so it shows something in case.
+encodeJsonValue (JsonRef idx) = "<<" <> show idx <> ">>"
 
 encodeJsonNumber :: JsonNumber -> String
 encodeJsonNumber (JsonInt i) = show i

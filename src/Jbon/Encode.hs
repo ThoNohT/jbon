@@ -1,6 +1,15 @@
-module Jbon.Encode (EncodingSettings (..), WordSize (..), encodeJbon, settingsToW16, w16ToSettings, makeSettings) where
+module Jbon.Encode (
+  EncodingSettings (..),
+  WordSize (..),
+  encodeJbon,
+  settingsToW16,
+  w16ToSettings,
+  makeSettings,
+  gatherDuplicates,
+  countValues,
+) where
 
-import Core (safeMaximum)
+import Core (safeMaximum, subtractNums)
 import Data.Bits (Bits ((.&.)), shift)
 import Data.ByteString.Builder qualified as BSB (
   Builder,
@@ -13,9 +22,14 @@ import Data.ByteString.Builder qualified as BSB (
   word8,
  )
 import Data.ByteString.Lazy qualified as BSL (unpack)
-import Data.List (genericLength)
+import Data.Foldable (Foldable (foldl'))
+import Data.List (genericLength, sortOn, uncons)
+import Data.Map.Strict qualified as Map (Map, alter, empty, filter, toList)
 import Data.Maybe (fromMaybe)
+import Data.Ord (Down (Down))
 import Data.Word (Word16, Word32, Word64, Word8)
+import Indexed (Indexed)
+import Jbon.Build (replaceValue)
 import Jbon.Jbon (JbonObject (..), getObjectId, maxFieldLength, nFields)
 import Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt, maxStringLength)
 
@@ -39,13 +53,20 @@ wordSizeBits W16 = 1
 wordSizeBits W32 = 2
 wordSizeBits W64 = 3
 
--- | TODO: Documentation.
+-- | Converts a Word16 with the two least significant bits set to a word size, to the corresponding WordSize.
 bitsWordSize :: Word16 -> Maybe WordSize
 bitsWordSize 0 = Just W8
 bitsWordSize 1 = Just W16
 bitsWordSize 2 = Just W32
 bitsWordSize 3 = Just W64
 bitsWordSize _ = Nothing
+
+-- | Converts a WordSize to the number of bytes it needs.
+wordSizeNoBytes :: WordSize -> Word64
+wordSizeNoBytes W8 = 1
+wordSizeNoBytes W16 = 2
+wordSizeNoBytes W32 = 4
+wordSizeNoBytes W64 = 8
 
 -- Encoding settings.
 
@@ -58,6 +79,7 @@ data EncodingSettings = EncodingSettings
   , objectNameLength :: WordSize
   , intSize :: WordSize
   , decimalSize :: WordSize
+  , numberOfCustomObjects :: WordSize
   }
   deriving (Show)
 
@@ -70,6 +92,7 @@ settingsToW16 settings =
     + shift (wordSizeBits $ objectNameLength settings) 8
     + shift (wordSizeBits $ intSize settings) 10
     + shift (wordSizeBits $ decimalSize settings) 12
+    + shift (wordSizeBits $ numberOfCustomObjects settings) 14
 
 w16ToSettings :: Word16 -> Maybe EncodingSettings
 w16ToSettings word =
@@ -79,6 +102,7 @@ w16ToSettings word =
     <*> bitsWordSize (shift word (-6) .&. 3)
     <*> bitsWordSize (shift word (-8) .&. 3)
     <*> bitsWordSize (shift word (-10) .&. 3)
+    <*> bitsWordSize (shift word (-12) .&. 3)
     <*> bitsWordSize (shift word (-12) .&. 3)
 
 -- | Creates encoding settings given a json value, and the calculated jbon objects.
@@ -92,6 +116,7 @@ makeSettings value objs =
     , objectNameLength = wordSize $ safeMaximum $ maxFieldLength . snd <$> objs
     , intSize = wordSize $ maxInt value
     , decimalSize = wordSize $ maxDecimal value
+    , numberOfCustomObjects = W8 -- TODO: Fill in.
     }
 
 -- General encoders
@@ -166,3 +191,58 @@ encodeValue settings objs (JsonObj fields) =
   BSB.word8 9
     <> encodeNumber (numberOfObjects settings) (getObjectId fields objs)
     <> mconcat (encodeValue settings objs . snd <$> fields)
+encodeValue settings _ (JsonRef idx) = BSB.word8 10 <> encodeNumber (numberOfCustomObjects settings) idx
+
+-- Optimization
+
+{- | Replace all duplicate entries with references to a single instance of this value.
+ TODO: Only do the replacement if it will actually save space
+   (value size * value count > value size + reference size + reference size * value count).
+-}
+gatherDuplicates :: EncodingSettings -> JsonValue -> (JsonValue, Indexed JsonValue)
+gatherDuplicates settings val = go 0 [] val valueCounts
+ where
+  valueCounts = sortOn (Down . valueSize settings . fst) . Map.toList $ countValues val
+
+  go :: Word64 -> Indexed JsonValue -> JsonValue -> [(JsonValue, Word64)] -> (JsonValue, Indexed JsonValue)
+  go idx acc value counts =
+    case uncons counts of
+      Nothing -> (value, acc)
+      Just ((biggestVal, count), xs) ->
+        let innerValueCounts = (* count) <$> countValues biggestVal
+            newCounts = subtractNums xs innerValueCounts
+            reducedValue = replaceValue biggestVal (JsonRef idx) value
+         in go (idx + 1) ((idx, biggestVal) : acc) reducedValue newCounts
+
+-- | Returns the size in bytes that a Json value will take up in Jbon encoding.
+valueSize :: EncodingSettings -> JsonValue -> Word64
+valueSize _ JsonNull = 1
+valueSize _ (JsonBool _) = 1
+valueSize settings (JsonNum _ (JsonInt _)) = 1 + wordSizeNoBytes (intSize settings)
+valueSize settings (JsonNum _ (JsonDecimal _ _)) =
+  1 + wordSizeNoBytes (intSize settings)
+    + wordSizeNoBytes (decimalSize settings)
+valueSize settings (JsonStr str) =
+  1 + wordSizeNoBytes (stringLength settings)
+    + genericLength (BSL.unpack $ BSB.toLazyByteString $ BSB.stringUtf8 str)
+valueSize settings (JsonArr arr) =
+  1 + wordSizeNoBytes (arrayLength settings)
+    + sum (valueSize settings <$> arr)
+valueSize settings (JsonObj fields) =
+  1 + wordSizeNoBytes (numberOfObjects settings)
+    + sum (valueSize settings . snd <$> fields)
+valueSize settings (JsonRef _) = 1 + wordSizeNoBytes (numberOfCustomObjects settings)
+
+{- | Finds all values in a JsonValue that have duplicates, and the number of times they occur.
+ | The values are returned as a list sorted by their size in descending order.
+-}
+countValues :: JsonValue -> Map.Map JsonValue Word64
+countValues = Map.filter (> 1) . go Map.empty
+ where
+  go :: Map.Map JsonValue Word64 -> JsonValue -> Map.Map JsonValue Word64
+  go acc arr@(JsonArr elems) = foldl' go (increment arr acc) elems
+  go acc obj@(JsonObj fields) = foldl' go (increment obj acc) (snd <$> fields)
+  go acc leaf = increment leaf acc
+
+  increment :: JsonValue -> Map.Map JsonValue Word64 -> Map.Map JsonValue Word64
+  increment = Map.alter (Just . maybe 1 (+ 1))

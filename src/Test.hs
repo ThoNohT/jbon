@@ -9,9 +9,9 @@ import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
 import Indexed (indexed)
-import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
+import Jbon.Build (getObjectDefinitions, minify, replaceValue, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (EncodingSettings (..), WordSize (..), encodeJbon, settingsToW16, w16ToSettings)
+import Jbon.Encode (EncodingSettings (..), WordSize (..), countValues, encodeJbon, gatherDuplicates, settingsToW16, w16ToSettings)
 import Json (JsonNumber (..), JsonValue (..), encodeJsonValue, parseJsonValue)
 import Parsing (pWord16, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
@@ -41,7 +41,7 @@ tests =
           )
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
         , ("longstring", JsonStr $ replicate 66000 'A')
-        , ("utfstring", JsonArr [ JsonStr "▶X", JsonBool True ])
+        , ("utfstring", JsonArr [JsonStr "▶X", JsonBool True])
         ]
    in [ Test
           "parsing json"
@@ -101,17 +101,44 @@ tests =
           )
       , Test
           "settings"
-          ( let settings = EncodingSettings W8 W16 W32 W64 W8 W16 W32
+          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8
                 dec = pack . show . w16ToSettings . fst . fromRight (0, mempty) . runParser (pWord16 "Settings word16")
                 enc = toLazyByteString . BSB.word16LE . settingsToW16
              in dec $ enc settings
           )
+      , Test
+          "replaceValue"
+          ( pack . unlines $
+              show
+                <$> [ replaceValue (JsonBool False) JsonNull $
+                        JsonArr [JsonBool True, JsonBool False, JsonBool False, JsonBool False, JsonBool True]
+                    , replaceValue (JsonArr [JsonNull, JsonStr "AA"]) (JsonRef 1) $
+                        JsonObj
+                          [ ("a", JsonArr [JsonNull, JsonStr "AA"])
+                          , ("b", JsonArr [JsonNull, JsonStr "AA"])
+                          , ("b", JsonArr [JsonNull, JsonStr "AAA"])
+                          ]
+                    ]
+          )
+      , Test
+          "gatherDuplicates"
+          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8
+             in (pack . unlines)
+                  [ show $ gatherDuplicates settings $ JsonArr [JsonNull, JsonNull, JsonNull, JsonNull]
+                  , let arr = JsonArr $ replicate 5 (JsonBool True)
+                     in show $ gatherDuplicates settings $ JsonArr [arr, arr, arr]
+                  ]
+          )
+      , Test "countValues" (pack $ unlines $ (\(n, v) -> n <> ": " <> show (countValues v)) <$> testObjects)
+      , Test
+          "decode jbon"
+          $ pack . unlines $
+            (\(n, v) -> n <> ": " <> show (decodeJbonValue $ toLazyByteString $ buildAndEncode v)) <$> testObjects
+      , Test "encode json" $
+          pack . unlines $
+            (\(n, v) -> n <> ": " <> show (encodeJsonValue v)) <$> testObjects
       ]
         <> (testObjects <&> (\(n, o) -> Test ("encode-" <> n) (toLazyByteString $ buildAndEncode o)))
-        <> (testObjects <&> (\(n, o) -> Test ("jsonencode-" <> n) (pack $ encodeJsonValue o)))
-        <> ( testObjects
-              <&> (\(n, o) -> Test ("decode-" <> n) (pack $ show $ decodeJbonValue $ toLazyByteString $ buildAndEncode o))
-           )
 
 -- | Runs all tests.
 run :: IO ()

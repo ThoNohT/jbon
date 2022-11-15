@@ -1,6 +1,7 @@
-module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify, buildDefinitions) where
+module Jbon.Build (getObjectDefinitions, tryGetIndexedSubList, minify, buildDefinitions, replaceValue) where
 
 import Core (firstJust)
+import Data.Bifunctor (Bifunctor (second))
 import Data.List (nub, sortOn)
 import Data.Word (Word64)
 import Indexed (Indexed, index, indexed)
@@ -13,12 +14,9 @@ getObjectDefinitions = minify . extract
 
 -- | Extracts all lists of fields from the objects contained in the provided json value.
 extract :: JsonValue -> [[String]]
-extract JsonNull = []
-extract (JsonBool _) = []
-extract (JsonNum _ _) = []
-extract (JsonStr _) = []
 extract (JsonArr elems) = concat $ extract <$> elems
 extract (JsonObj values) = (fst <$> values) : concat (extract <$> fmap snd values)
+extract _ = []
 
 {- | Given a list of property lists, converts a minimal list of JbonObjects, where each object tries to inherit from
  | another object such that it minimizes its own introduced properties.
@@ -94,3 +92,12 @@ buildDefinitions = go []
     Just depIdx -> case index depIdx acc of
       Nothing -> Nothing -- Invalid dependency reference.
       Just parent -> go ((idx, mergeObject depIdx parent fields) : acc) xs
+
+-- | Replace every instance of the first value with the second value in the third value.
+replaceValue :: JsonValue -> JsonValue -> JsonValue -> JsonValue
+replaceValue toReplace replaceWith replaceIn =
+  case replaceIn of
+    _ | replaceIn == toReplace -> replaceWith
+    JsonArr arr -> JsonArr $ replaceValue toReplace replaceWith <$> arr
+    JsonObj fields -> JsonObj $ second (replaceValue toReplace replaceWith) <$> fields
+    v -> v

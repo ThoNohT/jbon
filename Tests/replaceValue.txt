@@ -1,0 +1,2 @@
+JsonArr [JsonBool True,JsonNull,JsonNull,JsonNull,JsonBool True]
+JsonObj [("a",JsonRef 1),("b",JsonRef 1),("b",JsonArr [JsonNull,JsonStr "AAA"])]

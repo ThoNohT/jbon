@@ -1,0 +1,8 @@
+empty: fromList []
+single: fromList []
+inherited: fromList [(JsonNull,2)]
+nested: fromList []
+advanced: fromList []
+longarray: fromList [(JsonNull,1000)]
+longstring: fromList []
+utfstring: fromList []

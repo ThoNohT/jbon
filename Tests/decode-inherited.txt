@@ -1,1 +1,0 @@
-Right (EncodingSettings {numberOfObjects = W8, numberOfFields = W8, arrayLength = W8, stringLength = W8, objectNameLength = W8, intSize = W8, decimalSize = W8},JsonArr [JsonObj [("a",JsonBool True)],JsonObj [("a",JsonNull),("b",JsonNull)]],[(1,JbonObject Nothing [(1,"a")] ["a"]),(2,JbonObject (Just 1) [(1,"b")] ["a","b"])])
