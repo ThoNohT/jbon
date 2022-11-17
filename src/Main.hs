@@ -73,12 +73,15 @@ decodeFile filePath = do
       putStrLn "Unable to parse Jbon"
       putStrLn err
       exitFailure
-    Right (settings, json, defs) -> do
+    Right (settings, json, refs, defs) -> do
       putStrLn "[Definitions]:"
       print defs
       putStrLn "\n==========\n"
       putStrLn "[Settings]:"
       print settings
+      putStrLn "\n==========\n"
+      putStrLn "[References]:"
+      print refs
       putStrLn "\n==========\n"
       let outFn = filePath <> ".json"
       writeFile outFn (encodeJsonValue json)
@@ -92,7 +95,7 @@ analyzeJbon filePath = do
       putStrLn "Unable to parse Jbon"
       putStrLn err
       exitFailure
-    Right (settings, _, defs) -> do
+    Right (settings, _, _, defs) -> do
       putStrLn "[Definitions]:"
       print defs
       putStrLn "\n==========\n"

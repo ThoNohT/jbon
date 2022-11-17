@@ -30,10 +30,10 @@ parseString err size = do
   pure $ BSU.toString $ pack w8s
 
 -- | Decodes a byte string into a json value and its jbon definition. Returns Nothing if decoding fails.
-decodeJbonValue :: ByteString -> Either String (EncodingSettings, JsonValue, Indexed JbonObject)
+decodeJbonValue :: ByteString -> Either String (EncodingSettings, JsonValue, Indexed JsonValue, Indexed JbonObject)
 decodeJbonValue input = fst <$> runParser jbonDocument input
  where
-  jbonDocument :: Parser ByteString (EncodingSettings, JsonValue, Indexed JbonObject)
+  jbonDocument :: Parser ByteString (EncodingSettings, JsonValue, Indexed JsonValue, Indexed JbonObject)
   jbonDocument = do
     jbonHeader
     settings <- liftP "Settings conversion" . w16ToSettings =<< pWord16 "Jbon settings w16"
@@ -43,7 +43,7 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     value <- jsonValue settings objects
     expandedValue <- liftP "Expand references" $ expandJsonValue refs value
 
-    pure (settings, expandedValue, objects)
+    pure (settings, expandedValue, refs, objects)
 
   jbonHeader :: Parser ByteString ()
   jbonHeader = void $ pString (BSI.c2w <$> "JBON")

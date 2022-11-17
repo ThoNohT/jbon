@@ -145,11 +145,12 @@ encodeStr stringLength str =
 
 -- | Encodes a json value to jbon.
 encodeJbon :: Indexed JbonObject -> JsonValue -> BSB.Builder
-encodeJbon objs value' = BSB.string8 "JBON" <> settingsHeader <> objsHeader <> refsHeader <> body
+encodeJbon objs value' =
+  BSB.string8 "JBON" <> settingsHeader <> objsHeader <> refsHeader <> body
  where
   settings' = makeSettings value' objs
   (value, refs) = gatherDuplicates settings' value'
-  settings = settings{numberOfReferences = wordSize $ genericLength refs}
+  settings = settings'{numberOfReferences = wordSize $ genericLength refs}
 
   settingsHeader :: BSB.Builder
   settingsHeader = BSB.word16LE $ settingsToW16 settings
@@ -209,10 +210,7 @@ encodeValue settings _ (JsonRef idx) = BSB.word8 10 <> encodeNumber (numberOfRef
 
 -- Optimization
 
-{- | Replace all duplicate entries with references to a single instance of this value.
- TODO: Only do the replacement if it will actually save space
-   (value size * value count > value size + reference size + reference size * value count).
--}
+-- | Replace all duplicate entries with references to a single instance of this value.
 gatherDuplicates :: EncodingSettings -> JsonValue -> (JsonValue, Indexed JsonValue)
 gatherDuplicates settings val = go 0 [] val valueCounts
  where
@@ -228,12 +226,12 @@ gatherDuplicates settings val = go 0 [] val valueCounts
               -- Subtract this number  times the number of times the value occurs, minus one, since it is still defined
               -- in the references, and values can also be replaced in there.
               innerValueCounts = (* (count - 1)) <$> countValues biggestVal
-              --
+
               -- Reduce the counts of the values, no need to reorder, since their sizes have not changed (we only
               -- replaced values that are bigger than the ones in the list so far).
               newCounts = subtractNums xs innerValueCounts
 
-              -- Reduce the main value,
+              -- Reduce the main value.
               reducedValue = replaceValue biggestVal (JsonRef idx) value
 
               -- Reduce all of the referenced values.

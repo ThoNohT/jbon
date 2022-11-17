@@ -42,6 +42,17 @@ tests =
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
         , ("longstring", JsonStr $ replicate 66000 'A')
         , ("utfstring", JsonArr [JsonStr "▶X", JsonBool True])
+        ,
+          ( "withrefs"
+          , let o =
+                  JsonObj
+                    [ ("name", JsonStr "A string with some size")
+                    , ("name2", JsonStr "A string with some size")
+                    , ("name3", JsonStr "A string with some size")
+                    , ("value", JsonNum False (JsonDecimal 15 15))
+                    ]
+             in JsonArr $ replicate 5 o
+          )
         ]
    in [ Test
           "parsing json"
@@ -164,6 +175,7 @@ runSingleTest name = do
 runSingleTest' :: Bool -> String -> ByteString -> IO ()
 runSingleTest' showOutputOnSuccess name result = do
   let fp = "./Tests/" <> name <> ".txt"
+  let unexpectedFp = fp <> ".unexpected"
   exists <- doesFileExist fp
   if not exists
     then statusMsg "ERROR" "No results file found."
@@ -171,15 +183,30 @@ runSingleTest' showOutputOnSuccess name result = do
       fileContents <- BSL.readFile fp
       if fileContents == result
         then do
-          statusMsg "OK" "Test succeeded."
           if showOutputOnSuccess then putStrLn $ BSI.w2c <$> BSL.unpack result else pure ()
+          removeFileIfExists unexpectedFp
+          statusMsg "OK" "Test succeeded."
         else do
           statusMsg "ERROR" "Test result mismatch, got:"
           putStrLn $ BSI.w2c <$> BSL.unpack result
           putStrLn "Expected:"
           putStrLn $ BSI.w2c <$> BSL.unpack fileContents
+          writeOrOverwriteFile unexpectedFp result
  where
   statusMsg status msg = putStrLn $ "[" <> status <> "] '" <> name <> "': " <> msg
+
+-- | Removes the specified file if it exists.
+removeFileIfExists :: FilePath -> IO ()
+removeFileIfExists fp = do
+  exists <- doesFileExist fp
+  if exists then removeFile fp else pure ()
+
+-- | Writes the provided byte string to the provided file. If the file already exists, it is overwritten.
+writeOrOverwriteFile :: FilePath -> ByteString -> IO ()
+writeOrOverwriteFile fp contents = do
+  removeFileIfExists fp
+  BSL.writeFile fp contents
+  putStrLn $ "Written to " <> fp <> "."
 
 -- | Updates the expected result for the test with the provided name.
 update :: String -> IO ()
@@ -189,13 +216,11 @@ update name = do
     Nothing -> putStrLn $ "Test '" <> name <> "' not found."
     Just test -> do
       let fp = "./Tests/" <> name <> ".txt"
+      let unexpectedFp = fp <> ".unexpected"
       createDirectoryIfMissing True "./Tests/"
-
-      exists <- doesFileExist fp
-      if exists then removeFile fp else pure ()
 
       putStrLn $ "Test '" <> name <> "' result:"
       let result = runTest test
       putStrLn $ BSI.w2c <$> BSL.unpack result
-      BSL.writeFile fp result
-      putStrLn $ "Written to " <> fp <> "."
+      removeFileIfExists unexpectedFp
+      writeOrOverwriteFile fp result

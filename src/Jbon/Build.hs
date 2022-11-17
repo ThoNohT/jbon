@@ -109,5 +109,18 @@ replaceValue toReplace replaceWith replaceIn =
     JsonObj fields -> JsonObj $ second (replaceValue toReplace replaceWith) <$> fields
     v -> v
 
+{- | Expands a json value by replacing referenes from the values in the provided mapping.
+ | Returns Nothing if any reference could not be found.
+-}
 expandJsonValue :: Indexed JsonValue -> JsonValue -> Maybe JsonValue
-expandJsonValue refs val = undefined
+expandJsonValue refs (JsonRef idx) = index idx refs >>= (\v -> if hasRefs v then expandJsonValue refs v else Just v)
+expandJsonValue refs (JsonArr arr) = JsonArr <$> mapM (expandJsonValue refs) arr
+expandJsonValue refs (JsonObj fields) = JsonObj <$> mapM (\(n, v) -> (n,) <$> expandJsonValue refs v) fields
+expandJsonValue _ v = Just v
+
+-- | Indicates whether a json value has references.
+hasRefs :: JsonValue -> Bool
+hasRefs (JsonRef _) = True
+hasRefs (JsonArr arr) = any hasRefs arr
+hasRefs (JsonObj fields) = any hasRefs (snd <$> fields)
+hasRefs _ = False
