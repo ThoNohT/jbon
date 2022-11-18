@@ -4,7 +4,7 @@ import Data.ByteString.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as BSL (readFile, writeFile)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (encodeJbon, makeSettings)
+import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
 import Json (encodeJsonValue, parseJsonValue)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -51,9 +51,10 @@ analyzeJson filePath = do
       putStrLn "Unable to parse Json"
       putStrLn err
       exitFailure
-    Right json -> do
-      let defs = getObjectDefinitions json
-      let settings = makeSettings json defs
+    Right value' -> do
+      let defs = getObjectDefinitions value'
+      let settings' = makeSettings value' defs
+      let (settings, refs, value) = applyReferences settings' value'
 
       putStrLn "[Definitions]:"
       print defs

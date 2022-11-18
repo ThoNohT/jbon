@@ -5,6 +5,7 @@ module Jbon.Encode (
   settingsToW16,
   w16ToSettings,
   makeSettings,
+  applyReferences,
   gatherDuplicates,
   countValues,
 ) where
@@ -143,14 +144,20 @@ encodeStr stringLength str =
 
 -- Jbon related encoders
 
+-- | Gathers references and updates the settings and value with these references.
+applyReferences :: EncodingSettings -> JsonValue -> (EncodingSettings, Indexed JsonValue, JsonValue)
+applyReferences settings value =
+  let (value', refs) = gatherDuplicates settings value
+      settings' = settings{numberOfReferences = wordSize $ genericLength refs}
+   in (settings', refs, value')
+
 -- | Encodes a json value to jbon.
 encodeJbon :: Indexed JbonObject -> JsonValue -> BSB.Builder
 encodeJbon objs value' =
   BSB.string8 "JBON" <> settingsHeader <> objsHeader <> refsHeader <> body
  where
   settings' = makeSettings value' objs
-  (value, refs) = gatherDuplicates settings' value'
-  settings = settings'{numberOfReferences = wordSize $ genericLength refs}
+  (settings, refs, value) = applyReferences settings' value'
 
   settingsHeader :: BSB.Builder
   settingsHeader = BSB.word16LE $ settingsToW16 settings
