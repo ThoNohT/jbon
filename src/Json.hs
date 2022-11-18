@@ -12,8 +12,9 @@ module Json (
 import Control.Applicative (Alternative (many, (<|>)))
 import Control.Monad (void)
 import Core (safeMaximum)
-import Data.List (genericLength, intercalate)
+import Data.List (genericLength, intercalate, intersperse)
 import Data.Word (Word64)
+import Formattable (Formattable (..), format', indent, unlines')
 import Parsing (Parser (..), entire, inWs, pChar, pCheck, pCond, pInt, pString, sepBy, ws)
 
 -- | A type the wraps all possible values that can exist inside a json document.
@@ -27,6 +28,55 @@ data JsonValue where
   -- This value cannot be parsed, only created by making references for duplicate values.
   JsonRef :: Word64 -> JsonValue
   deriving (Eq, Show, Ord)
+
+instance Formattable JsonValue where
+  formattedLength JsonNull = 4
+  formattedLength (JsonBool True) = 4
+  formattedLength (JsonBool False) = 5
+  formattedLength (JsonNum negative num) = formattedLength num + if negative then 1 else 0
+  formattedLength (JsonStr str) = genericLength str + 2
+  formattedLength (JsonArr arr) = 4 + sum (intersperse 3 $ formattedLength <$> arr)
+  formattedLength (JsonRef index) = genericLength (show index) + 6
+  formattedLength (JsonObj fields) = 4 + sum (intersperse 3 $ fieldLength <$> fields)
+   where
+    fieldLength (name, value) = genericLength name + 2 + 2 + formattedLength value
+
+  formatSingleLine JsonNull = "null"
+  formatSingleLine (JsonBool val) = if val then "true" else "false"
+  formatSingleLine (JsonNum neg num) = (if neg then "-" else "") <> formatSingleLine num
+  formatSingleLine (JsonStr str) = "\"" <> str <> "\""
+  formatSingleLine (JsonRef index) = "<<" <> show index <> ">>"
+  formatSingleLine (JsonArr arr) = "[ " <> intercalate ", " (formatSingleLine <$> arr) <> " ]"
+  formatSingleLine (JsonObj fields) =
+    "{ " <> intercalate ", " ((\(n, v) -> "\"" <> n <> "\": " <> formatSingleLine v) <$> fields) <> " }"
+
+  formatMultiline a@(JsonArr arr) = Just $ \idnt start maxLen ->
+    if formattedLength a + fromIntegral start <= maxLen
+      then formatSingleLine a
+      else
+        unlines'
+          [ "["
+          , unlines' $ commaSeparate [] 1 $ format' (idnt + 1) (idnt * 2) maxLen <$> arr
+          , "]"
+          ]
+  formatMultiline o@(JsonObj fields) = Just $ \idnt start maxLen ->
+    if formattedLength o + fromIntegral start <= maxLen
+      then formatSingleLine o
+      else
+        unlines'
+          [ "{"
+          , unlines' $ commaSeparate [] 1 $ formatPair (idnt + 1) maxLen <$> fields
+          , "}"
+          ]
+   where
+    formatPair idnt maxLen (name, value) =
+      "\"" <> name <> "\": " <> format' idnt (idnt + genericLength name + 4) maxLen value
+  formatMultiline _ = Nothing
+
+commaSeparate :: [String] -> Int -> [String] -> [String]
+commaSeparate _ _ [] = []
+commaSeparate acc idnt [x] = reverse $ indent idnt x : acc
+commaSeparate acc idnt (x : xs) = commaSeparate (indent idnt x <> "," : acc) idnt xs
 
 -- | Determines the length of the longest string in a json value.
 maxStringLength :: JsonValue -> Word64
@@ -67,6 +117,15 @@ data JsonNumber where
   JsonDecimal :: Word64 -> Word64 -> JsonNumber
   JsonInt :: Word64 -> JsonNumber
   deriving (Eq, Show, Ord)
+
+instance Formattable JsonNumber where
+  formattedLength (JsonDecimal i d) = genericLength (show i) + 1 + genericLength (show d)
+  formattedLength (JsonInt i) = genericLength (show i)
+
+  formatSingleLine (JsonDecimal i d) = show i <> "." <> show d
+  formatSingleLine (JsonInt i) = show i
+
+  formatMultiline _ = Nothing
 
 -- | Attempts to parse a json value from a string.
 parseJsonValue :: String -> Either String JsonValue

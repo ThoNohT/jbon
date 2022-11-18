@@ -3,6 +3,14 @@ module Core (firstJust, safeMaximum, notMinBound, subtractNums) where
 import Data.Map.Strict qualified as Map (Map, lookup)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 
+-- | Type class for things that can be formatted.
+class Formattable a where
+  -- | The length of this value, if it were formatted over a single line.
+  formattedLength :: a -> Integer
+
+  -- | Formats a value, with the specified indentation, and optionally over multiple lines.
+  format :: a -> Integer -> Bool -> String
+
 -- | Returns the first element in the list for which the function returns Just.
 firstJust :: forall a b. (a -> Maybe b) -> [a] -> Maybe b
 firstJust f = listToMaybe . mapMaybe f

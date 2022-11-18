@@ -27,6 +27,7 @@ executable jbon
   main-is: Main.hs
   other-modules:
       Core
+      Formattable
       Indexed
       Jbon.Build
       Jbon.Decode

@@ -2,6 +2,7 @@ module Main (main) where
 
 import Data.ByteString.Builder (toLazyByteString)
 import Data.ByteString.Lazy qualified as BSL (readFile, writeFile)
+import Formattable (format)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
@@ -16,9 +17,11 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
+    ["pipe"] -> pipeInput
     ["test"] -> Test.run
     ["encode", fileName] -> encodeFile fileName
-    ["decode", fileName] -> decodeFile fileName
+    ["decode", fileName] -> decodeFile False fileName
+    ["decodef", fileName] -> decodeFile True fileName
     ["analyze", "json", fileName] -> analyzeJson fileName
     ["analyze", "jbon", fileName] -> analyzeJbon fileName
     "test" : xs -> Test.runSingleTest $ unwords xs
@@ -27,6 +30,12 @@ main = do
     _ -> do
       putStrLn "Invalid command."
       showUsage
+
+pipeInput :: IO ()
+pipeInput = do
+  inp <- getContents
+
+  putStr $ "Contents:\n" <> inp
 
 encodeFile :: FilePath -> IO ()
 encodeFile filePath = do
@@ -62,30 +71,24 @@ analyzeJson filePath = do
       putStrLn "[Settings]:"
       print settings
       putStrLn "\n==========\n"
+      putStrLn "[References]:"
+      print refs
+      putStrLn "\n==========\n"
       putStrLn "[Value]:"
-      print json
+      print value
       putStrLn "\n==========\n"
 
-decodeFile :: FilePath -> IO ()
-decodeFile filePath = do
+decodeFile :: Bool -> FilePath -> IO ()
+decodeFile formatVal filePath = do
   input <- BSL.readFile filePath
   case decodeJbonValue input of
     Left err -> do
       putStrLn "Unable to parse Jbon"
       putStrLn err
       exitFailure
-    Right (settings, json, refs, defs) -> do
-      putStrLn "[Definitions]:"
-      print defs
-      putStrLn "\n==========\n"
-      putStrLn "[Settings]:"
-      print settings
-      putStrLn "\n==========\n"
-      putStrLn "[References]:"
-      print refs
-      putStrLn "\n==========\n"
+    Right (_, json, _, _) -> do
       let outFn = filePath <> ".json"
-      writeFile outFn (encodeJsonValue json)
+      writeFile outFn (if formatVal then format 80 json else encodeJsonValue json)
       putStrLn $ printf "Written to '%s'" outFn
 
 analyzeJbon :: FilePath -> IO ()
