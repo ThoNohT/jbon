@@ -2,9 +2,8 @@ module Jbon.Decode (decodeJbonValue) where
 
 import Control.Applicative (Alternative (empty))
 import Control.Monad (replicateM, void)
-import Core (notMinBound)
+import Core (notMinBound, stringToWords)
 import Data.ByteString (pack)
-import Data.ByteString.Internal qualified as BSI (c2w)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
@@ -46,7 +45,7 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     pure (settings, expandedValue, refs, objects)
 
   jbonHeader :: Parser ByteString ()
-  jbonHeader = void $ pString (BSI.c2w <$> "JBON")
+  jbonHeader = void $ pString $ stringToWords "JBON"
 
   references :: EncodingSettings -> Indexed JbonObject -> Parser ByteString (Indexed JsonValue)
   references settings objs = do

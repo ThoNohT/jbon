@@ -1,8 +1,8 @@
 module Test (run, runSingleTest, update) where
 
+import Core (wordsToString)
 import Data.ByteString.Builder (Builder, toLazyByteString)
 import Data.ByteString.Builder qualified as BSB
-import Data.ByteString.Internal as BSI (w2c)
 import Data.ByteString.Lazy as BSL (ByteString, readFile, unpack, writeFile)
 import Data.ByteString.Lazy.Char8 (pack)
 import Data.Either (fromRight)
@@ -190,14 +190,14 @@ runSingleTest' showOutputOnSuccess name result = do
       fileContents <- BSL.readFile fp
       if fileContents == result
         then do
-          if showOutputOnSuccess then putStrLn $ BSI.w2c <$> BSL.unpack result else pure ()
+          if showOutputOnSuccess then putStrLn $ wordsToString $ BSL.unpack result else pure ()
           removeFileIfExists unexpectedFp
           statusMsg "OK" "Test succeeded."
         else do
           statusMsg "ERROR" "Test result mismatch, got:"
-          putStrLn $ BSI.w2c <$> BSL.unpack result
+          putStrLn $ wordsToString $ BSL.unpack result
           putStrLn "Expected:"
-          putStrLn $ BSI.w2c <$> BSL.unpack fileContents
+          putStrLn $ wordsToString $ BSL.unpack fileContents
           writeOrOverwriteFile unexpectedFp result
  where
   statusMsg status msg = putStrLn $ "[" <> status <> "] '" <> name <> "': " <> msg
@@ -228,6 +228,6 @@ update name = do
 
       putStrLn $ "Test '" <> name <> "' result:"
       let result = runTest test
-      putStrLn $ BSI.w2c <$> BSL.unpack result
+      putStrLn $ wordsToString $ BSL.unpack result
       removeFileIfExists unexpectedFp
       writeOrOverwriteFile fp result

@@ -38,6 +38,7 @@ executable jbon
       Json.Json
       Parsing
       Test
+      Usage
       Paths_jbon
   hs-source-dirs:
       src

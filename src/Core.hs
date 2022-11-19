@@ -1,7 +1,9 @@
-module Core (Formattable (..), firstJust, safeMaximum, notMinBound, subtractNums) where
+module Core (Formattable (..), firstJust, safeMaximum, notMinBound, subtractNums, wordsToString, stringToWords) where
 
+import Data.ByteString.Internal qualified as BSI
 import Data.Map.Strict qualified as Map (Map, lookup)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Data.Word (Word8)
 
 -- | Type class for things that can be formatted.
 class Formattable a where
@@ -36,3 +38,11 @@ subtractNums m1 m2 = mapMaybe subtractElem m1
       diff
         | diff > minBound -> Just (k, diff)
         | otherwise -> Nothing
+
+-- | Converts an array of words directly to a string, without any encoding.
+wordsToString :: [Word8] -> String
+wordsToString input = BSI.w2c <$> input
+
+-- | Converts a string directly into an array of words, without any encoding.
+stringToWords:: String -> [Word8]
+stringToWords input = BSI.c2w <$> input

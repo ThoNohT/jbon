@@ -1,121 +1,214 @@
 module Main (main) where
 
 import Data.ByteString.Builder (toLazyByteString)
-import Data.ByteString.Lazy qualified as BSL (readFile, writeFile)
+import Data.ByteString.Lazy qualified as BSL (getContents, putStr, readFile, writeFile)
+import Data.Char (toLower)
+import Data.List (elemIndex, isPrefixOf, uncons)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Formattable (format)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
 import Json.Decode (parseJsonValue)
 import Json.Encode (encodeJsonValue)
+import Json.Json (JsonValue)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
-import Test qualified
+import Test qualified (run, runSingleTest, update)
 import Text.Printf (printf)
+import Text.Read (readMaybe)
+import Usage qualified
 
 main :: IO ()
 main = do
   args <- getArgs
-  case args of
-    ["pipe"] -> pipeInput
-    ["test"] -> Test.run
-    ["encode", fileName] -> encodeFile fileName
-    ["decode", fileName] -> decodeFile False fileName
-    ["decodef", fileName] -> decodeFile True fileName
-    ["analyze", "json", fileName] -> analyzeJson fileName
-    ["analyze", "jbon", fileName] -> analyzeJbon fileName
-    "test" : xs -> Test.runSingleTest $ unwords xs
-    "update" : xs -> Test.update $ unwords xs
-    "help" : _ -> showUsage
-    _ -> do
-      putStrLn "Invalid command."
-      showUsage
+  let args' = uncons args
+  case args' of
+    Just (cmd, params)
+      | cmd == "encode" -> encode params
+      | cmd == "decode" -> decode params
+      | cmd == "test" -> test params
+      | cmd == "analze" -> analyze params
+      | cmd == "help" -> Usage.showUsage params
+      | otherwise -> do
+        Usage.showUsage []
+        putStrLn $ "Invalid command: '" <> cmd <> "'."
+    Nothing -> do
+      Usage.showUsage []
+      putStrLn "No command provided."
 
-pipeInput :: IO ()
-pipeInput = do
-  inp <- getContents
+-- | Checks whether a parameter is defined in the provided list of parameters.
+boolParam :: String -> [String] -> Bool
+boolParam name = elem ("-" <> name)
 
-  putStr $ "Contents:\n" <> inp
+{- | Checks whethere a parameter is defined, and if so, returns the next value after it.
+ | If there is no value after it, an empty string is returned.
+ | If the next parameter starts with a '-'  character, it is assumed to not belong to this parameter.
+-}
+strParam :: String -> [String] -> Maybe String
+strParam name params =
+  case elemIndex ("-" <> name) params of
+    Nothing -> Nothing
+    Just idx ->
+      let (_, post) = splitAt (idx + 1) params
+          arg = fromMaybe "" $ listToMaybe post
+       in Just $ if "-" `isPrefixOf` arg then "" else arg
 
-encodeFile :: FilePath -> IO ()
-encodeFile filePath = do
-  str <- readFile filePath
-  case parseJsonValue str of
-    Left err -> do
-      putStrLn "Unable to parse Json"
-      putStrLn err
+{- | Attempts to get a file parameter, if the value of the parameter is empty,
+ | then an error is shown and the application will exit.
+-}
+getFileParam :: String -> String -> [String] -> IO (Maybe FilePath)
+getFileParam usageMode name params = do
+  case strParam name params of
+    Nothing -> pure Nothing
+    Just "" -> do
+      Usage.showUsage [usageMode]
+      putStrLn $ "Empty file parameter '" <> name <> "' provided."
       exitFailure
-    Right json -> do
-      let defs = getObjectDefinitions json
-      let jbon = encodeJbon defs json
-      let outFn = filePath <> ".jbon"
-      BSL.writeFile outFn (toLazyByteString jbon)
-      putStrLn $ printf "Written to '%s'" outFn
+    Just p -> pure $ Just p
 
-analyzeJson :: FilePath -> IO ()
-analyzeJson filePath = do
-  str <- readFile filePath
-  case parseJsonValue str of
-    Left err -> do
-      putStrLn "Unable to parse Json"
-      putStrLn err
+{- | Attempts to get a parameter of a type that implements the Read typeclass.
+ | If the value is defined, but cannot be read, the provided error message will be shown and the application will
+ | exit.
+-}
+getReadParam :: forall a. Read a => String -> String -> String -> [String] -> IO (Maybe a)
+getReadParam usageMode errorMsg name params = do
+  case strParam name params of
+    Nothing -> pure Nothing
+    Just str ->
+      case readMaybe @a str of
+        Nothing -> do
+          Usage.showUsage [usageMode]
+          putStrLn errorMsg
+          exitFailure
+        Just v -> pure $ Just v
+
+-- | Gets the Right part of an Either, or exits with the provided message and the error in the Left part.
+getRight :: forall a. String -> String -> Either String a -> IO a
+getRight _ _ (Right v) = pure v
+getRight usageMode errMsg (Left err) = do
+  Usage.showUsage [usageMode]
+  putStrLn errMsg
+  putStrLn err
+  exitFailure
+
+-- | Formats a json value given the settings provided in the parameters.
+formatJsonValue :: JsonValue -> [String] -> IO String
+formatJsonValue json params = do
+  let formatted = boolParam "f" params
+  maxLen <- fromMaybe 80 <$> getReadParam "decode" "Unable to parse the line length to a number" "l" params
+  pure $ if formatted then format maxLen json else encodeJsonValue json
+
+{- | Outputs the provided string either to standard output or to the file if it is specified.
+ | If a file is specified, it is written to stdout that the value was written to this file.
+-}
+outputStr :: String -> [String] -> IO ()
+outputStr value params = do
+  outFile <- getFileParam "encode" "o" params
+  case outFile of
+    Nothing -> putStr value
+    Just fp -> do
+      writeFile fp value
+      putStrLn $ printf "Written to '%s'" fp
+
+encode :: [String] -> IO ()
+encode params = do
+  inFile <- getFileParam "encode" "i" params
+  input <- maybe getContents readFile inFile
+
+  json <- getRight "encode" "Unable to parse Json." $ parseJsonValue input
+  let defs = getObjectDefinitions json
+  let jbon = encodeJbon defs json
+
+  outFile <- getFileParam "encode" "o" params
+  case outFile of
+    Nothing -> BSL.putStr $ toLazyByteString jbon
+    Just fp -> do
+      BSL.writeFile fp $ toLazyByteString jbon
+      putStrLn $ printf "Written to '%s'" fp
+
+decode :: [String] -> IO ()
+decode params = do
+  inFile <- getFileParam "decode" "i" params
+  input <- maybe BSL.getContents BSL.readFile inFile
+
+  (_, json, _, _) <- getRight "decode" "Unable to parse Jbon." $ decodeJbonValue input
+  outStr <- formatJsonValue json params
+
+  outputStr outStr params
+
+test :: [String] -> IO ()
+test params = do
+  case params of
+    ["run"] -> Test.run
+    "run" : rest -> Test.runSingleTest $ unwords rest
+    "update" : rest -> Test.update $ unwords rest
+    [] -> do
+      Usage.showUsage ["test"]
+      putStrLn "No subcommand provided."
       exitFailure
-    Right value' -> do
-      let defs = getObjectDefinitions value'
-      let settings' = makeSettings value' defs
-      let (settings, refs, value) = applyReferences settings' value'
+    other -> do
+      putStrLn $ "Invalid command: '" <> unwords other <> "'."
 
-      putStrLn "[Definitions]:"
-      print defs
-      putStrLn "\n==========\n"
-      putStrLn "[Settings]:"
-      print settings
-      putStrLn "\n==========\n"
-      putStrLn "[References]:"
-      print refs
-      putStrLn "\n==========\n"
-      putStrLn "[Value]:"
-      print value
-      putStrLn "\n==========\n"
-
-decodeFile :: Bool -> FilePath -> IO ()
-decodeFile formatVal filePath = do
-  input <- BSL.readFile filePath
-  case decodeJbonValue input of
-    Left err -> do
-      putStrLn "Unable to parse Jbon"
-      putStrLn err
+analyze :: [String] -> IO ()
+analyze params = do
+  case fmap toLower <$> strParam "m" params of
+    Nothing -> do
+      Usage.showUsage ["analyze"]
+      putStrLn "No mode provided."
       exitFailure
-    Right (_, json, _, _) -> do
-      let outFn = filePath <> ".json"
-      writeFile outFn (if formatVal then format 80 json else encodeJsonValue json)
-      putStrLn $ printf "Written to '%s'" outFn
+    Just "json" -> do
+      inFile <- getFileParam "encode" "i" params
+      input <- maybe getContents readFile inFile
+      json' <- getRight "encode" "Unable to parse Json." $ parseJsonValue input
 
-analyzeJbon :: FilePath -> IO ()
-analyzeJbon filePath = do
-  input <- BSL.readFile filePath
-  case decodeJbonValue input of
-    Left err -> do
-      putStrLn "Unable to parse Jbon"
-      putStrLn err
+      let defs = getObjectDefinitions json'
+      let settings' = makeSettings json' defs
+      let (settings, refs, json) = applyReferences settings' json'
+      outVal <- formatJsonValue json params
+
+      let outStr =
+            unwords
+              [ "[Definitions]:"
+              , show defs
+              , "\n==========\n"
+              , "[Settings]:"
+              , show settings
+              , "\n==========\n"
+              , "[References]:"
+              , show refs
+              , "\n==========\n"
+              , "[Value]:"
+              , outVal
+              , "\n==========\n"
+              ]
+
+      outputStr outStr params
+    Just "jbon" -> do
+      inFile <- getFileParam "encode" "i" params
+      input <- maybe BSL.getContents BSL.readFile inFile
+
+      (settings, json, refs, defs) <- getRight "decode" "Unable to parse Jbon." $ decodeJbonValue input
+      outVal <- formatJsonValue json params
+
+      let outStr =
+            unwords
+              [ "[Definitions]:"
+              , show defs
+              , "\n==========\n"
+              , "[Settings]:"
+              , show settings
+              , "\n==========\n"
+              , "[References]:"
+              , show refs
+              , "\n==========\n"
+              , "[Value]:"
+              , outVal
+              , "\n==========\n"
+              ]
+
+      outputStr outStr params
+    Just other -> do
+      Usage.showUsage ["analyze"]
+      putStrLn $ "Invalid mode: '" <> other <> "'."
       exitFailure
-    Right (settings, _, _, defs) -> do
-      putStrLn "[Definitions]:"
-      print defs
-      putStrLn "\n==========\n"
-      putStrLn "[Settings]:"
-      print settings
-      putStrLn "\n==========\n"
-
--- | Shows the usage message.
-showUsage :: IO ()
-showUsage = do
-  putStrLn "Usage:"
-  putStrLn "jbon encode <filename>: Encode the provided json file to jbon."
-  putStrLn "jbon decode <filename>: Decode the provided jbon file to json."
-  putStrLn "jbon analyze json <filename>: Analyze the provided json file."
-  putStrLn "jbon analyze jbon <filename>: Analyze the provided jbon file."
-  putStrLn "jbon test: Run all tests."
-  putStrLn "jbon test <test name>: Run the test with the provided name."
-  putStrLn "jbon update <test name>: Update the output for he test with the provided name."
-  putStrLn "jbon help: Show this help text."
