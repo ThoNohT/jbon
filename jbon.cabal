@@ -33,7 +33,9 @@ executable jbon
       Jbon.Decode
       Jbon.Encode
       Jbon.Jbon
-      Json
+      Json.Decode
+      Json.Encode
+      Json.Json
       Parsing
       Test
       Paths_jbon

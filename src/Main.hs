@@ -6,13 +6,13 @@ import Formattable (format)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
-import Json (encodeJsonValue, parseJsonValue)
+import Json.Decode (parseJsonValue)
+import Json.Encode (encodeJsonValue)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import Test qualified
 import Text.Printf (printf)
 
--- Json parsers.
 main :: IO ()
 main = do
   args <- getArgs

@@ -9,10 +9,10 @@ import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
 import Indexed (Indexed, index, indexed)
-import Jbon.Build (buildDefinitions, expandJsonValue)
+import Jbon.Build (buildDefinitions)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), w16ToSettings)
 import Jbon.Jbon (JbonObject (..))
-import Json (JsonNumber (..), JsonValue (..))
+import Json.Json (JsonNumber (..), JsonValue (..), expandJsonValue)
 import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8, withError)
 
 -- | Parses a number with the provided size.

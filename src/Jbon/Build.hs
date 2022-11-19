@@ -3,17 +3,14 @@ module Jbon.Build (
   tryGetIndexedSubList,
   minify,
   buildDefinitions,
-  replaceValue,
-  expandJsonValue,
 ) where
 
 import Core (firstJust)
-import Data.Bifunctor (Bifunctor (second))
 import Data.List (nub, sortOn)
 import Data.Word (Word64)
 import Indexed (Indexed, index, indexed)
 import Jbon.Jbon (JbonObject (..))
-import Json (JsonValue (..))
+import Json.Json (JsonValue (..))
 
 -- | Creates jbon object definitions for all objects in the provided json value.
 getObjectDefinitions :: JsonValue -> [(Word64, JbonObject)]
@@ -99,28 +96,3 @@ buildDefinitions = go []
     Just depIdx -> case index depIdx acc of
       Nothing -> Nothing -- Invalid dependency reference.
       Just parent -> go ((idx, mergeObject depIdx parent fields) : acc) xs
-
--- | Replace every instance of the first value with the second value in the third value.
-replaceValue :: JsonValue -> JsonValue -> JsonValue -> JsonValue
-replaceValue toReplace replaceWith replaceIn =
-  case replaceIn of
-    _ | replaceIn == toReplace -> replaceWith
-    JsonArr arr -> JsonArr $ replaceValue toReplace replaceWith <$> arr
-    JsonObj fields -> JsonObj $ second (replaceValue toReplace replaceWith) <$> fields
-    v -> v
-
-{- | Expands a json value by replacing referenes from the values in the provided mapping.
- | Returns Nothing if any reference could not be found.
--}
-expandJsonValue :: Indexed JsonValue -> JsonValue -> Maybe JsonValue
-expandJsonValue refs (JsonRef idx) = index idx refs >>= (\v -> if hasRefs v then expandJsonValue refs v else Just v)
-expandJsonValue refs (JsonArr arr) = JsonArr <$> mapM (expandJsonValue refs) arr
-expandJsonValue refs (JsonObj fields) = JsonObj <$> mapM (\(n, v) -> (n,) <$> expandJsonValue refs v) fields
-expandJsonValue _ v = Just v
-
--- | Indicates whether a json value has references.
-hasRefs :: JsonValue -> Bool
-hasRefs (JsonRef _) = True
-hasRefs (JsonArr arr) = any hasRefs arr
-hasRefs (JsonObj fields) = any hasRefs (snd <$> fields)
-hasRefs _ = False

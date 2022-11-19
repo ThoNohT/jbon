@@ -1,4 +1,4 @@
-module Core (firstJust, safeMaximum, notMinBound, subtractNums) where
+module Core (Formattable (..), firstJust, safeMaximum, notMinBound, subtractNums) where
 
 import Data.Map.Strict qualified as Map (Map, lookup)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)

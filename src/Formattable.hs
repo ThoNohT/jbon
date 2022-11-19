@@ -1,4 +1,4 @@
-module Formattable (Formattable (..), format', format, indentation, unlines', indent) where
+module Formattable (Formattable (..), format', format, indentation, indent, unlines') where
 import Data.List (intercalate)
 
 -- | Type class for things that can be formatted.

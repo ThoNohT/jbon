@@ -31,9 +31,8 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (Down (Down))
 import Data.Word (Word16, Word32, Word64, Word8)
 import Indexed (Indexed)
-import Jbon.Build (replaceValue)
 import Jbon.Jbon (JbonObject (..), getObjectId, maxFieldLength, nFields)
-import Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt, maxStringLength)
+import Json.Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt, maxStringLength, replaceValue)
 
 -- | Word size
 
