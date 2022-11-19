@@ -28,7 +28,7 @@ main = do
       | cmd == "encode" -> encode params
       | cmd == "decode" -> decode params
       | cmd == "test" -> test params
-      | cmd == "analze" -> analyze params
+      | cmd == "analyze" -> analyze params
       | cmd == "help" -> Usage.showUsage params
       | otherwise -> do
         Usage.showUsage []
@@ -105,11 +105,12 @@ formatJsonValue json params = do
 outputStr :: String -> [String] -> IO ()
 outputStr value params = do
   outFile <- getFileParam "encode" "o" params
+  let silent = boolParam "s" params
   case outFile of
     Nothing -> putStr value
     Just fp -> do
       writeFile fp value
-      putStrLn $ printf "Written to '%s'" fp
+      if not silent then putStrLn $ printf "Written to '%s'" fp else pure ()
 
 encode :: [String] -> IO ()
 encode params = do
@@ -145,14 +146,14 @@ test params = do
     "update" : rest -> Test.update $ unwords rest
     [] -> do
       Usage.showUsage ["test"]
-      putStrLn "No subcommand provided."
+      putStrLn "No mode provided."
       exitFailure
     other -> do
-      putStrLn $ "Invalid command: '" <> unwords other <> "'."
+      putStrLn $ "Invalid mode: '" <> unwords other <> "'."
 
 analyze :: [String] -> IO ()
 analyze params = do
-  case fmap toLower <$> strParam "m" params of
+  case fmap toLower . fst <$> uncons params of
     Nothing -> do
       Usage.showUsage ["analyze"]
       putStrLn "No mode provided."
