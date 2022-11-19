@@ -8,6 +8,7 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
+import Formattable (format)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, replaceValue, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
@@ -40,6 +41,7 @@ tests =
               ]
           )
         , ("longarray", JsonArr $ replicate 1000 JsonNull)
+        , ("arrayswlongstrings", JsonArr $ replicate 5 $ JsonArr $ replicate 5 $ JsonStr "Semi long string too")
         , ("longstring", JsonStr $ replicate 66000 'A')
         , ("utfstring", JsonArr [JsonStr "▶X", JsonBool True])
         ,
@@ -152,6 +154,9 @@ tests =
       , Test "encode json" $
           pack . unlines $
             (\(n, v) -> n <> ": " <> show (encodeJsonValue v)) <$> testObjects
+      , Test "format json" $
+          pack . unlines $
+            (\(n, v) -> n <> ": " <> format 80 v) <$> testObjects
       ]
         <> (testObjects <&> (\(n, o) -> Test ("encode-" <> n) (toLazyByteString $ buildAndEncode o)))
 
