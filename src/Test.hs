@@ -46,6 +46,7 @@ tests =
         , ("arrayswlongstrings", JsonArr $ replicate 5 $ JsonArr $ replicate 5 $ JsonStr "Semi long string too")
         , ("longstring", JsonStr $ replicate 66000 'A')
         , ("utfstring", JsonArr [JsonStr "▶X", JsonBool True])
+        , ("unicodeescape", JsonArr [JsonStr "\\u0010"])
         ,
           ( "withrefs"
           , let o =
