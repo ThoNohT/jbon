@@ -2,8 +2,8 @@ module Jbon.Encode (
   EncodingSettings (..),
   WordSize (..),
   encodeJbon,
-  settingsToW16,
-  w16ToSettings,
+  settingsToWords,
+  wordsToSettings,
   makeSettings,
   applyReferences,
   gatherDuplicates,
@@ -32,7 +32,7 @@ import Data.Ord (Down (Down))
 import Data.Word (Word16, Word32, Word64, Word8)
 import Indexed (Indexed)
 import Jbon.Jbon (JbonObject (..), getObjectId, maxFieldLength, nFields)
-import Json.Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxInt, maxStringLength, replaceValue)
+import Json.Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxExponent, maxInt, maxStringLength, replaceValue)
 
 -- | Word size
 
@@ -48,14 +48,14 @@ wordSize w
   | otherwise = W8
 
 -- | Converts a WordSize to a Word16 with the two least significant bits set to the corresponding value.
-wordSizeBits :: WordSize -> Word16
+wordSizeBits :: forall a. Num a => WordSize -> a
 wordSizeBits W8 = 0
 wordSizeBits W16 = 1
 wordSizeBits W32 = 2
 wordSizeBits W64 = 3
 
 -- | Converts a Word16 with the two least significant bits set to a word size, to the corresponding WordSize.
-bitsWordSize :: Word16 -> Maybe WordSize
+bitsWordSize :: forall a. (Num a, Bits a) => a -> Maybe WordSize
 bitsWordSize 0 = Just W8
 bitsWordSize 1 = Just W16
 bitsWordSize 2 = Just W32
@@ -81,30 +81,34 @@ data EncodingSettings = EncodingSettings
   , intSize :: WordSize
   , decimalSize :: WordSize
   , numberOfReferences :: WordSize
+  , exponentSize :: WordSize
   }
   deriving (Show)
 
-settingsToW16 :: EncodingSettings -> Word16
-settingsToW16 settings =
-  wordSizeBits (numberOfObjects settings)
-    + shift (wordSizeBits $ numberOfFields settings) 2
-    + shift (wordSizeBits $ arrayLength settings) 4
-    + shift (wordSizeBits $ stringLength settings) 6
-    + shift (wordSizeBits $ objectNameLength settings) 8
-    + shift (wordSizeBits $ intSize settings) 10
-    + shift (wordSizeBits $ decimalSize settings) 12
-    + shift (wordSizeBits $ numberOfReferences settings) 14
+settingsToWords :: EncodingSettings -> (Word16, Word8)
+settingsToWords settings =
+  ( wordSizeBits (numberOfObjects settings)
+      + shift (wordSizeBits $ numberOfFields settings) 2
+      + shift (wordSizeBits $ arrayLength settings) 4
+      + shift (wordSizeBits $ stringLength settings) 6
+      + shift (wordSizeBits $ objectNameLength settings) 8
+      + shift (wordSizeBits $ intSize settings) 10
+      + shift (wordSizeBits $ decimalSize settings) 12
+      + shift (wordSizeBits $ numberOfReferences settings) 14
+  , wordSizeBits (exponentSize settings)
+  )
 
-w16ToSettings :: Word16 -> Maybe EncodingSettings
-w16ToSettings word =
-  EncodingSettings <$> bitsWordSize (word .&. 3)
-    <*> bitsWordSize (shift word (-2) .&. 3)
-    <*> bitsWordSize (shift word (-4) .&. 3)
-    <*> bitsWordSize (shift word (-6) .&. 3)
-    <*> bitsWordSize (shift word (-8) .&. 3)
-    <*> bitsWordSize (shift word (-10) .&. 3)
-    <*> bitsWordSize (shift word (-12) .&. 3)
-    <*> bitsWordSize (shift word (-12) .&. 3)
+wordsToSettings :: (Word16, Word8) -> Maybe EncodingSettings
+wordsToSettings (msb, lsb) =
+  EncodingSettings <$> bitsWordSize (msb .&. 3)
+    <*> bitsWordSize (shift msb (-2) .&. 3)
+    <*> bitsWordSize (shift msb (-4) .&. 3)
+    <*> bitsWordSize (shift msb (-6) .&. 3)
+    <*> bitsWordSize (shift msb (-8) .&. 3)
+    <*> bitsWordSize (shift msb (-10) .&. 3)
+    <*> bitsWordSize (shift msb (-12) .&. 3)
+    <*> bitsWordSize (shift msb (-12) .&. 3)
+    <*> bitsWordSize (lsb .&. 3)
 
 -- | Creates encoding settings given a json value, and the calculated jbon objects.
 makeSettings :: JsonValue -> Indexed JbonObject -> EncodingSettings
@@ -118,6 +122,7 @@ makeSettings value objs =
     , intSize = wordSize $ maxInt value
     , decimalSize = wordSize $ maxDecimal value
     , numberOfReferences = W8 -- Filled in later.
+    , exponentSize = wordSize $ maxExponent value
     }
 
 -- General encoders
@@ -159,7 +164,9 @@ encodeJbon objs value' =
   (settings, refs, value) = applyReferences settings' value'
 
   settingsHeader :: BSB.Builder
-  settingsHeader = BSB.word16LE $ settingsToW16 settings
+  settingsHeader =
+    let (msb, lsb) = settingsToWords settings
+     in BSB.word16LE msb <> BSB.word8 lsb
 
   objsHeader :: BSB.Builder
   objsHeader =

@@ -7,6 +7,7 @@ module Json.Json (
   maxArrayLength,
   maxInt,
   maxDecimal,
+  maxExponent,
 ) where
 
 import Core (safeMaximum)
@@ -66,6 +67,14 @@ maxDecimal = \case
   JsonNum _ (JsonDecimal _ d) -> d
   JsonArr arr -> (safeMaximum $ maxInt <$> arr)
   JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
+  _ -> 0
+
+-- | Determines the maximum exponent in a json value.
+maxExponent :: JsonValue -> Word64
+maxExponent = \case
+  JsonNum _ _ -> 0 -- TODO: Implement exponents.
+  JsonArr arr -> (safeMaximum $ maxExponent <$> arr)
+  JsonObj objs -> safeMaximum $ maxExponent . snd <$> objs
   _ -> 0
 
 -- | Replace every instance of the first value with the second value in the third value.

@@ -9,7 +9,7 @@ import Data.ByteString.UTF8 as BSU (toString)
 import Data.Word (Word64, Word8)
 import Indexed (Indexed, index, indexed)
 import Jbon.Build (buildDefinitions)
-import Jbon.Encode (EncodingSettings (..), WordSize (..), w16ToSettings)
+import Jbon.Encode (EncodingSettings (..), WordSize (..), wordsToSettings)
 import Jbon.Jbon (JbonObject (..))
 import Json.Json (JsonNumber (..), JsonValue (..), expandJsonValue)
 import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8, withError)
@@ -35,7 +35,9 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
   jbonDocument :: Parser ByteString (EncodingSettings, JsonValue, Indexed JsonValue, Indexed JbonObject)
   jbonDocument = do
     jbonHeader
-    settings <- liftP "Settings conversion" . w16ToSettings =<< pWord16 "Jbon settings w16"
+    settings <-
+      liftP "Settings conversion" . wordsToSettings
+        =<< (,) <$> pWord16 "Jbon settings msb" <*> pWord8 "Jbon settings lsb"
     defs <- definitions settings
     objects <- liftP "Definition building" $ buildDefinitions defs
     refs <- references settings objects

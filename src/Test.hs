@@ -12,11 +12,11 @@ import Formattable (format)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (EncodingSettings (..), WordSize (..), countValues, encodeJbon, gatherDuplicates, settingsToW16, w16ToSettings)
+import Jbon.Encode (EncodingSettings (..), WordSize (..), countValues, encodeJbon, gatherDuplicates, settingsToWords, wordsToSettings)
 import Json.Decode (parseJsonValue)
 import Json.Encode (encodeJsonValue)
 import Json.Json (JsonNumber (..), JsonValue (..), replaceValue)
-import Parsing (pWord16, runParser)
+import Parsing (pWord16, pWord8, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
 -- | A test, with a name and the result of running it.
@@ -117,9 +117,10 @@ tests =
           )
       , Test
           "settings"
-          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8
-                dec = pack . show . w16ToSettings . fst . fromRight (0, mempty) . runParser (pWord16 "Settings word16")
-                enc = toLazyByteString . BSB.word16LE . settingsToW16
+          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8 W32
+                settingsP = (,) <$> pWord16 "Settings msb" <*> pWord8 "Settings lsb"
+                dec = pack . show . wordsToSettings . fst . fromRight ((0, 0), mempty) . runParser settingsP
+                enc = toLazyByteString . (\(msb, lsb) -> BSB.word16LE msb <> BSB.word8 lsb) . settingsToWords
              in dec $ enc settings
           )
       , Test
@@ -138,7 +139,7 @@ tests =
           )
       , Test
           "gatherDuplicates"
-          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8
+          ( let settings = EncodingSettings W8 W16 W32 W64 W64 W32 W16 W8 W32
              in (pack . unlines)
                   [ show $ gatherDuplicates settings $ JsonArr $ replicate 5 (JsonStr "Hello")
                   , show $ gatherDuplicates settings $ JsonArr $ replicate 5 JsonNull
