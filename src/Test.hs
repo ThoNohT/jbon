@@ -8,13 +8,13 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
-import Formattable (format, Formattable (..))
+import Formattable (format)
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), countValues, encodeJbon, gatherDuplicates, settingsToWords, wordsToSettings)
 import Json.Decode (parseJsonValue)
-import Json.Json (JsonNumber (..), JsonValue (..), replaceValue)
+import Json.Json (JsonExponent (..), JsonNumber (..), JsonValue (..), replaceValue)
 import Parsing (pWord16, pWord8, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 
@@ -46,6 +46,13 @@ tests =
         , ("longstring", JsonStr $ replicate 66000 'A')
         , ("utfstring", JsonArr [JsonStr "▶X", JsonBool True])
         , ("unicodeescape", JsonArr [JsonStr "\\u0010"])
+        , ("int", JsonNum False (JsonInt 5) Nothing)
+        , ("decimal", JsonNum False (JsonDecimal 5 6) Nothing)
+        , ("negative", JsonNum True (JsonInt 5) Nothing)
+        , ("exponent", JsonNum False (JsonInt 5) (Just (JsonExponent False 3)))
+        , ("exponentneg", JsonNum False (JsonInt 5) (Just (JsonExponent True 3)))
+        , ("decexponentneg", JsonNum False (JsonDecimal 2 1) (Just (JsonExponent True 3)))
+        , ("negdecexponentneg", JsonNum True (JsonDecimal 2 1) (Just (JsonExponent True 3)))
         ,
           ( "withrefs"
           , let o =
@@ -69,6 +76,13 @@ tests =
                 , show $ parseJsonValue "-13"
                 , show $ parseJsonValue "13.342"
                 , show $ parseJsonValue "-1234.342"
+                , show $ parseJsonValue "1E3"
+                , show $ parseJsonValue "1E-3"
+                , show $ parseJsonValue "1e+3"
+                , show $ parseJsonValue "-1e3"
+                , show $ parseJsonValue "-1e-3"
+                , show $ parseJsonValue "-1E+3"
+                , show $ parseJsonValue "-1.23E+3"
                 , show $ parseJsonValue "\"Some \\a string\\\"\""
                 , show $ parseJsonValue "\"\""
                 , show $ parseJsonValue "[13, 12.5, true, null, \"Hey!\", [false, true]]"
@@ -154,9 +168,6 @@ tests =
           "decode jbon"
           $ pack . unlines $
             (\(n, v) -> n <> ": " <> show (decodeJbonValue $ toLazyByteString $ buildAndEncode v)) <$> testObjects
-      , Test "encode json" $
-          pack . unlines $
-            (\(n, v) -> n <> ": " <> show (formatSingleLine v)) <$> testObjects
       , Test "format json" $
           pack . unlines $
             (\(n, v) -> n <> ": " <> format 80 v) <$> testObjects

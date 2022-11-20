@@ -40,9 +40,9 @@ parseJsonValue input = fst <$> runParser (entire "End of file" $ inWs "Surroundi
     intP = JsonInt <$> pInt "Int"
 
     expP =
-      (\_ n e -> JsonExponent (isJust n) e)
+      (\_ n e -> JsonExponent (Just '-' == n) e)
         <$> (pChar "Exponent sign" 'E' <|> pChar "Exponent sign" 'e')
-          <*> optional (pChar "Exponent negative sign" '-')
+          <*> optional (pChar "Exponent negative sign" '-' <|> pChar "Exponent positive sign" '+')
           <*> pInt "Exponent"
 
   stringLiteral :: Parser String String

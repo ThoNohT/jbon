@@ -133,7 +133,7 @@ instance Formattable JsonNumber where
 instance Formattable JsonExponent where
   formattedLength (JsonExponent neg e) = if neg then 2 else 1 + genericLength (show e)
 
-  formatSingleLine (JsonExponent neg e) = "E" <> if neg then "-" else "" <> show e
+  formatSingleLine (JsonExponent neg e) = "E" <> (if neg then "-" else "") <> show e
 
   formatMultiline _ = Nothing
 
