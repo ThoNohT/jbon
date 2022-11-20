@@ -11,7 +11,7 @@ import Indexed (Indexed, index, indexed)
 import Jbon.Build (buildDefinitions)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), wordsToSettings)
 import Jbon.Jbon (JbonObject (..))
-import Json.Json (JsonNumber (..), JsonValue (..), expandJsonValue)
+import Json.Json (JsonExponent (..), JsonNumber (..), JsonValue (..), expandJsonValue)
 import Parsing (Parser (..), liftP, pElem, pString, pWord16, pWord32, pWord64, pWord8, withError)
 
 -- | Parses a number with the provided size.
@@ -79,6 +79,28 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     name <- parseString "Field name" (stringLength settings)
     pure (idx, name)
 
+  jsonNumber :: Word8 -> EncodingSettings -> Parser ByteString JsonValue
+  jsonNumber nVal' settings = do
+    let nVal = nVal' - 3
+    let hasExponent = nVal >= 4
+    let expIsNegative = nVal >= 8
+    let isDecimal = (nVal `mod` 4) >= 2
+    let isNegative = (nVal `mod` 2) == 1
+
+    int <- parseNumber "int" (intSize settings)
+    dec <-
+      if isDecimal
+        then Just <$> parseNumber "decimal" (decimalSize settings)
+        else pure Nothing
+    e <-
+      if hasExponent
+        then Just <$> parseNumber "exponent" (exponentSize settings)
+        else pure Nothing
+
+    pure $ case dec of
+      Nothing -> JsonNum isNegative (JsonInt int) (JsonExponent expIsNegative <$> e)
+      Just d -> JsonNum isNegative (JsonDecimal int d) (JsonExponent expIsNegative <$> e)
+
   jsonValue :: EncodingSettings -> Indexed JbonObject -> Parser ByteString JsonValue
   jsonValue settings objects = pWord8 "Value type id" >>= go
    where
@@ -86,24 +108,16 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
     go 0 = pure JsonNull
     go 1 = pure $ JsonBool False
     go 2 = pure $ JsonBool True
-    go 3 = JsonNum False . JsonInt <$> parseNumber "Pos Json int int" (intSize settings)
-    go 4 = JsonNum True . JsonInt <$> parseNumber "Neg Json int int" (intSize settings)
-    go 5 = JsonNum False <$> decimal
-    go 6 = JsonNum True <$> decimal
-    go 7 = JsonStr <$> parseString "Json string" (stringLength settings)
-    go 8 = do
+    go n | n >= 3 && n <= 14 = jsonNumber n settings
+    go 15 = JsonStr <$> parseString "Json string" (stringLength settings)
+    go 16 = do
       arrLen <- parseNumber "Array length" (arrayLength settings)
       JsonArr <$> withError "Array" (replicateM (fromIntegral arrLen) (jsonValue settings objects))
-    go 9 = do
+    go 17 = do
       objIndex <- parseNumber "Object index" (numberOfObjects settings)
       JbonObject _ _ fields <- liftP "Finding object by index" $ index objIndex objects
       JsonObj <$> mapM (\n -> (n,) <$> jsonValue settings objects) fields
-    go 10 = do
+    go 18 = do
       refIndex <- parseNumber "Reference index" (numberOfReferences settings)
       pure $ JsonRef refIndex
     go i = withError ("Unknown element " <> show i) empty
-
-    decimal :: Parser ByteString JsonNumber
-    decimal =
-      JsonDecimal <$> parseNumber "Json decimal int" (intSize settings)
-        <*> parseNumber "Json decimal decimal" (decimalSize settings)

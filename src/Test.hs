@@ -8,13 +8,12 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.List (find)
-import Formattable (format)
+import Formattable (format, Formattable (..))
 import Indexed (indexed)
 import Jbon.Build (getObjectDefinitions, minify, tryGetIndexedSubList)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (EncodingSettings (..), WordSize (..), countValues, encodeJbon, gatherDuplicates, settingsToWords, wordsToSettings)
 import Json.Decode (parseJsonValue)
-import Json.Encode (encodeJsonValue)
 import Json.Json (JsonNumber (..), JsonValue (..), replaceValue)
 import Parsing (pWord16, pWord8, runParser)
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
@@ -33,7 +32,7 @@ tests =
         [ ("empty", JsonObj [])
         , ("single", JsonObj [("a", JsonBool True)])
         , ("inherited", JsonArr [JsonObj [("a", JsonBool True)], JsonObj [("a", JsonNull), ("b", JsonNull)]])
-        , ("nested", JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23))]])
+        , ("nested", JsonArr [JsonObj [("a", JsonNull)], JsonObj [("a", JsonNum False (JsonInt 23) Nothing)]])
         ,
           ( "advanced"
           , JsonObj
@@ -54,7 +53,7 @@ tests =
                     [ ("name", JsonStr "A string with some size")
                     , ("name2", JsonStr "A string with some size")
                     , ("name3", JsonStr "A string with some size")
-                    , ("value", JsonNum False (JsonDecimal 15 15))
+                    , ("value", JsonNum False (JsonDecimal 15 15) Nothing)
                     ]
              in JsonArr $ replicate 5 o
           )
@@ -157,7 +156,7 @@ tests =
             (\(n, v) -> n <> ": " <> show (decodeJbonValue $ toLazyByteString $ buildAndEncode v)) <$> testObjects
       , Test "encode json" $
           pack . unlines $
-            (\(n, v) -> n <> ": " <> show (encodeJsonValue v)) <$> testObjects
+            (\(n, v) -> n <> ": " <> show (formatSingleLine v)) <$> testObjects
       , Test "format json" $
           pack . unlines $
             (\(n, v) -> n <> ": " <> format 80 v) <$> testObjects

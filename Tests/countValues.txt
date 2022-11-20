@@ -8,4 +8,4 @@ arrayswlongstrings: fromList [(JsonStr "Semi long string too",25),(JsonArr [Json
 longstring: fromList []
 utfstring: fromList []
 unicodeescape: fromList []
-withrefs: fromList [(JsonNum False (JsonDecimal 15 15),5),(JsonStr "A string with some size",15),(JsonObj [("name",JsonStr "A string with some size"),("name2",JsonStr "A string with some size"),("name3",JsonStr "A string with some size"),("value",JsonNum False (JsonDecimal 15 15))],5)]
+withrefs: fromList [(JsonNum False (JsonDecimal 15 15) Nothing,5),(JsonStr "A string with some size",15),(JsonObj [("name",JsonStr "A string with some size"),("name2",JsonStr "A string with some size"),("name3",JsonStr "A string with some size"),("value",JsonNum False (JsonDecimal 15 15) Nothing)],5)]

@@ -1,8 +1,9 @@
 module Json.Decode (parseJsonValue) where
 
-import Control.Applicative (Alternative ((<|>)), many)
+import Control.Applicative (Alternative ((<|>)), many, optional)
 import Control.Monad (void)
-import Json.Json (JsonNumber (..), JsonValue (..))
+import Data.Maybe (isJust)
+import Json.Json (JsonExponent (..), JsonNumber (..), JsonValue (..))
 import Parsing (
   Parser (..),
   entire,
@@ -27,7 +28,7 @@ parseJsonValue input = fst <$> runParser (entire "End of file" $ inWs "Surroundi
   jsonBool = JsonBool True <$ pString "true" <|> JsonBool False <$ pString "false"
 
   jsonNumber :: Parser String JsonValue
-  jsonNumber = JsonNum <$> negP <*> (decP <|> intP)
+  jsonNumber = JsonNum <$> negP <*> (decP <|> intP) <*> optional expP
    where
     negP = pCheck (== '-')
 
@@ -37,6 +38,12 @@ parseJsonValue input = fst <$> runParser (entire "End of file" $ inWs "Surroundi
       JsonDecimal pre <$> pInt "Decimal part of decimal"
 
     intP = JsonInt <$> pInt "Int"
+
+    expP =
+      (\_ n e -> JsonExponent (isJust n) e)
+        <$> (pChar "Exponent sign" 'E' <|> pChar "Exponent sign" 'e')
+          <*> optional (pChar "Exponent negative sign" '-')
+          <*> pInt "Exponent"
 
   stringLiteral :: Parser String String
   stringLiteral =

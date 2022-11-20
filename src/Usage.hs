@@ -61,7 +61,4 @@ analyzeUsage = do
   putStrLn "Options:"
   putStrLn "  -i <fileName>: The filename to read from. If not specified stdin is used."
   putStrLn "  -o <fileName>: The filename to write to. If not specified stdout is used."
-  putStrLn "  -f: If specified, the json value is output formatted over multiple lines."
-  putStrLn "  -l <length>: The number of characters per line to aim for. If not specified, 80 is used."
-  putStrLn "               Only has an effect if -f is also specified."
   putStrLn "  -s: If specified, nothing is written to stdout when outputting to a file."

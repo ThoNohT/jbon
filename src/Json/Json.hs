@@ -1,6 +1,9 @@
 module Json.Json (
   JsonValue (..),
   JsonNumber (..),
+  JsonExponent (..),
+  isDecimal,
+  expIsNegative,
   replaceValue,
   expandJsonValue,
   maxStringLength,
@@ -25,11 +28,25 @@ data JsonNumber where
   JsonInt :: Word64 -> JsonNumber
   deriving (Eq, Show, Ord)
 
+-- | Indicates whether a JsonNumber is a decimal.
+isDecimal :: JsonNumber -> Bool
+isDecimal (JsonInt _) = False
+isDecimal (JsonDecimal _ _) = True
+
+-- | A json exponent can be positive or negative, and has a number.
+data JsonExponent where
+  JsonExponent :: Bool -> Word64 -> JsonExponent
+  deriving (Eq, Show, Ord)
+
+-- | Indicates whether a JsonExponent is negative.
+expIsNegative :: JsonExponent -> Bool
+expIsNegative (JsonExponent neg _) = neg
+
 -- | A type the wraps all possible values that can exist inside a json document.
 data JsonValue where
   JsonNull :: JsonValue
   JsonBool :: Bool -> JsonValue
-  JsonNum :: Bool -> JsonNumber -> JsonValue
+  JsonNum :: Bool -> JsonNumber -> Maybe JsonExponent -> JsonValue
   JsonStr :: String -> JsonValue
   JsonArr :: [JsonValue] -> JsonValue
   JsonObj :: [(String, JsonValue)] -> JsonValue
@@ -55,8 +72,8 @@ maxArrayLength = \case
 -- | Determines the maximum integer value in a json value.
 maxInt :: JsonValue -> Word64
 maxInt = \case
-  JsonNum _ (JsonInt i) -> i
-  JsonNum _ (JsonDecimal i _) -> i
+  JsonNum _ (JsonInt i) _ -> i
+  JsonNum _ (JsonDecimal i _) _ -> i
   JsonArr arr -> (safeMaximum $ maxInt <$> arr)
   JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
   _ -> 0
@@ -64,7 +81,7 @@ maxInt = \case
 -- | Determines the maximum decimal value in a json value.
 maxDecimal :: JsonValue -> Word64
 maxDecimal = \case
-  JsonNum _ (JsonDecimal _ d) -> d
+  JsonNum _ (JsonDecimal _ d) _ -> d
   JsonArr arr -> (safeMaximum $ maxInt <$> arr)
   JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
   _ -> 0
@@ -72,7 +89,7 @@ maxDecimal = \case
 -- | Determines the maximum exponent in a json value.
 maxExponent :: JsonValue -> Word64
 maxExponent = \case
-  JsonNum _ _ -> 0 -- TODO: Implement exponents.
+  JsonNum _ _ (Just (JsonExponent _ e)) -> e
   JsonArr arr -> (safeMaximum $ maxExponent <$> arr)
   JsonObj objs -> safeMaximum $ maxExponent . snd <$> objs
   _ -> 0
@@ -113,11 +130,19 @@ instance Formattable JsonNumber where
 
   formatMultiline _ = Nothing
 
+instance Formattable JsonExponent where
+  formattedLength (JsonExponent neg e) = if neg then 2 else 1 + genericLength (show e)
+
+  formatSingleLine (JsonExponent neg e) = "E" <> if neg then "-" else "" <> show e
+
+  formatMultiline _ = Nothing
+
 instance Formattable JsonValue where
   formattedLength JsonNull = 4
   formattedLength (JsonBool True) = 4
   formattedLength (JsonBool False) = 5
-  formattedLength (JsonNum negative num) = formattedLength num + if negative then 1 else 0
+  formattedLength (JsonNum negative num e) =
+    if negative then 1 else 0 + formattedLength num + maybe 0 formattedLength e
   formattedLength (JsonStr str) = genericLength str + 2
   formattedLength (JsonArr arr) = 4 + sum (intersperse 3 $ formattedLength <$> arr)
   formattedLength (JsonRef idx) = genericLength (show idx) + 6
@@ -127,7 +152,8 @@ instance Formattable JsonValue where
 
   formatSingleLine JsonNull = "null"
   formatSingleLine (JsonBool val) = if val then "true" else "false"
-  formatSingleLine (JsonNum neg num) = (if neg then "-" else "") <> formatSingleLine num
+  formatSingleLine (JsonNum neg num e) =
+    (if neg then "-" else "") <> formatSingleLine num <> maybe "" formatSingleLine e
   formatSingleLine (JsonStr str) = "\"" <> str <> "\""
   formatSingleLine (JsonRef idx) = "<<" <> show idx <> ">>"
   formatSingleLine (JsonArr arr) = "[ " <> intercalate ", " (formatSingleLine <$> arr) <> " ]"

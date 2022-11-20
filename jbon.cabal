@@ -34,7 +34,6 @@ executable jbon
       Jbon.Encode
       Jbon.Jbon
       Json.Decode
-      Json.Encode
       Json.Json
       Parsing
       Test

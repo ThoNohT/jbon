@@ -27,12 +27,24 @@ import Data.ByteString.Lazy qualified as BSL (unpack)
 import Data.Foldable (Foldable (foldl'))
 import Data.List (genericLength, sortOn, uncons)
 import Data.Map.Strict qualified as Map (Map, alter, empty, filter, toList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Ord (Down (Down))
 import Data.Word (Word16, Word32, Word64, Word8)
 import Indexed (Indexed)
 import Jbon.Jbon (JbonObject (..), getObjectId, maxFieldLength, nFields)
-import Json.Json (JsonNumber (..), JsonValue (..), maxArrayLength, maxDecimal, maxExponent, maxInt, maxStringLength, replaceValue)
+import Json.Json (
+  JsonExponent (..),
+  JsonNumber (..),
+  JsonValue (..),
+  expIsNegative,
+  isDecimal,
+  maxArrayLength,
+  maxDecimal,
+  maxExponent,
+  maxInt,
+  maxStringLength,
+  replaceValue,
+ )
 
 -- | Word size
 
@@ -198,28 +210,56 @@ encodeField :: EncodingSettings -> (Word64, String) -> BSB.Builder
 encodeField settings (idx, str) =
   encodeNumber (numberOfFields settings) idx <> encodeStr (stringLength settings) str
 
+-- | Determines the number representing the value type.
+valueTypeNumber :: JsonValue -> BSB.Builder
+valueTypeNumber val = BSB.word8 $
+  case val of
+    JsonNull -> 0
+    JsonBool False -> 1
+    JsonBool True -> 2
+    JsonNum neg num e ->
+      3
+        + numIf neg 1
+        + numIf (isDecimal num) 2
+        + numIf (isJust e) 4
+        + numIf (maybe False expIsNegative e) 4
+    JsonStr _ -> 15
+    JsonArr _ -> 16
+    JsonObj _ -> 17
+    JsonRef _ -> 18
+ where
+  numIf cond n = if cond then n else 0
+
+-- | Encodes a json number using the provided encoding settings.
+encodejsonNumber :: EncodingSettings -> JsonNumber -> BSB.Builder
+encodejsonNumber settings (JsonInt i) = encodeNumber (intSize settings) i
+encodejsonNumber settings (JsonDecimal i d) =
+  encodeNumber (intSize settings) i <> encodeNumber (decimalSize settings) d
+
+-- | Encodes an exponent using the provided encoding settings.
+encodeExponent :: EncodingSettings -> JsonExponent -> BSB.Builder
+encodeExponent settings (JsonExponent _ e) = encodeNumber (decimalSize settings) e
+
 -- | Encodes a single json value using the provided encoding settings and jbon object definitions.
 encodeValue :: EncodingSettings -> Indexed JbonObject -> JsonValue -> BSB.Builder
-encodeValue _ _ JsonNull = BSB.word8 0
-encodeValue _ _ (JsonBool False) = BSB.word8 1
-encodeValue _ _ (JsonBool True) = BSB.word8 2
-encodeValue settings _ (JsonNum False (JsonInt i)) = BSB.word8 3 <> encodeNumber (intSize settings) i
-encodeValue settings _ (JsonNum True (JsonInt i)) = BSB.word8 4 <> encodeNumber (intSize settings) i
-encodeValue settings _ (JsonNum False (JsonDecimal i d)) =
-  BSB.word8 5 <> encodeNumber (intSize settings) i
-    <> encodeNumber (decimalSize settings) d
-encodeValue settings _ (JsonNum True (JsonDecimal i d)) =
-  BSB.word8 6 <> encodeNumber (intSize settings) i
-    <> encodeNumber (decimalSize settings) d
-encodeValue settings _ (JsonStr str) = BSB.word8 7 <> encodeStr (stringLength settings) str
-encodeValue settings objs (JsonArr arr) =
-  BSB.word8 8 <> encodeLength (arrayLength settings) arr
+encodeValue _ _ n@JsonNull = valueTypeNumber n
+encodeValue _ _ b@(JsonBool _) = valueTypeNumber b
+encodeValue settings _ n@(JsonNum _ num e) =
+  valueTypeNumber n
+    <> encodejsonNumber settings num
+    <> maybe mempty (encodeExponent settings) e
+encodeValue settings _ s@(JsonStr str) =
+  valueTypeNumber s <> encodeStr (stringLength settings) str
+encodeValue settings objs a@(JsonArr arr) =
+  valueTypeNumber a <> encodeLength (arrayLength settings) arr
     <> mconcat (encodeValue settings objs <$> arr)
-encodeValue settings objs (JsonObj fields) =
-  BSB.word8 9
+encodeValue settings objs o@(JsonObj fields) =
+  valueTypeNumber o
     <> encodeNumber (numberOfObjects settings) (getObjectId fields objs)
     <> mconcat (encodeValue settings objs . snd <$> fields)
-encodeValue settings _ (JsonRef idx) = BSB.word8 10 <> encodeNumber (numberOfReferences settings) idx
+encodeValue settings _ r@(JsonRef idx) =
+  valueTypeNumber r
+    <> encodeNumber (numberOfReferences settings) idx
 
 -- Optimization
 
@@ -269,10 +309,14 @@ gatherDuplicates settings val = go 0 [] val valueCounts
 valueSize :: EncodingSettings -> JsonValue -> Word64
 valueSize _ JsonNull = 1
 valueSize _ (JsonBool _) = 1
-valueSize settings (JsonNum _ (JsonInt _)) = 1 + wordSizeNoBytes (intSize settings)
-valueSize settings (JsonNum _ (JsonDecimal _ _)) =
+valueSize settings (JsonNum _ (JsonInt _) e) =
+  1
+    + wordSizeNoBytes (intSize settings)
+    + if isJust e then wordSizeNoBytes $ exponentSize settings else 0
+valueSize settings (JsonNum _ (JsonDecimal _ _) e) =
   1 + wordSizeNoBytes (intSize settings)
     + wordSizeNoBytes (decimalSize settings)
+    + if isJust e then wordSizeNoBytes $ exponentSize settings else 0
 valueSize settings (JsonStr str) =
   1 + wordSizeNoBytes (stringLength settings)
     + genericLength (BSL.unpack $ BSB.toLazyByteString $ BSB.stringUtf8 str)

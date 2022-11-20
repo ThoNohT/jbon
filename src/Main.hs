@@ -5,12 +5,11 @@ import Data.ByteString.Lazy qualified as BSL (getContents, putStr, readFile, wri
 import Data.Char (toLower)
 import Data.List (elemIndex, isPrefixOf, uncons)
 import Data.Maybe (fromMaybe, listToMaybe)
-import Formattable (format)
+import Formattable (Formattable (..), format)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
 import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
 import Json.Decode (parseJsonValue)
-import Json.Encode (encodeJsonValue)
 import Json.Json (JsonValue)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -97,7 +96,7 @@ formatJsonValue :: JsonValue -> [String] -> IO String
 formatJsonValue json params = do
   let formatted = boolParam "f" params
   maxLen <- fromMaybe 80 <$> getReadParam "decode" "Unable to parse the line length to a number" "l" params
-  pure $ if formatted then format maxLen json else encodeJsonValue json
+  pure $ if formatted then format maxLen json else formatSingleLine json
 
 {- | Outputs the provided string either to standard output or to the file if it is specified.
  | If a file is specified, it is written to stdout that the value was written to this file.
@@ -166,7 +165,6 @@ analyze params = do
       let defs = getObjectDefinitions json'
       let settings' = makeSettings json' defs
       let (settings, refs, json) = applyReferences settings' json'
-      outVal <- formatJsonValue json params
 
       let outStr =
             unwords
@@ -180,7 +178,7 @@ analyze params = do
               , show refs
               , "\n==========\n"
               , "[Value]:"
-              , outVal
+              , show json
               , "\n==========\n"
               ]
 
@@ -190,7 +188,6 @@ analyze params = do
       input <- maybe BSL.getContents BSL.readFile inFile
 
       (settings, json, refs, defs) <- getRight "decode" "Unable to parse Jbon." $ decodeJbonValue input
-      outVal <- formatJsonValue json params
 
       let outStr =
             unwords
@@ -204,7 +201,7 @@ analyze params = do
               , show refs
               , "\n==========\n"
               , "[Value]:"
-              , outVal
+              , show json
               , "\n==========\n"
               ]
 
