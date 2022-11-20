@@ -25,7 +25,7 @@ The jbon file format starts with a header with the text "JBON".
 
 ### Settings header
 
-After that are three bytes containing the encoding settings, that specify how many bytes are used for specific numbers. Each setting is a pair of two bytes that can have the following meaning:
+After that are three bytes containing the encoding settings, that specify how many bytes are used for specific numbers. Each setting is a pair of two bits that can have the following meaning:
 
 ```
 00: 1 byte for the number (8-bit word).
@@ -55,8 +55,8 @@ Each object definition follows the following format:
 
 - Second is a number (size `GG`) indicating the number of fields in the object.
 
-- After that follow the same number of field definition. Each field definition consists of two parts.
-  - A field index number (size `GG`), indicating at which point to insert the field in the object definition from which is being inherited. `0` means that the field is inserted at the start, higher numbers indicate that the fields are inserted after the object with this index in the object definition on which this one depends. If multiple field indexes are the same, they are appended at the appropriate place in order.
+- After that follow the same number of field definitions. Each field definition consists of two parts.
+  - A field index number (size `GG`), indicating at which point to insert the field in the object definition from which is being inherited. `0` means that the field is inserted at the start, higher numbers indicate that the fields are inserted after the field with this index in the object definition on which this one depends. If multiple field indexes are the same, they are appended at the appropriate place in order.
   - The name of this field, starting with a number (size `DD`) indicating the length of the string, followed by the same number of bytes that form the string representing the name of the field.
 
 ### References header
@@ -71,6 +71,46 @@ Each reference follows the following format:
 - Then the value for the reference. The format of values is specified in the next section.
 
 ### Json value
+
 The last section is the actual value. Every Json document contains a single value. So this section starts off with encoding this value. The format described in this section is also used for the values in the references header.
 
-TODO: Jbon value explanation.
+The first byte specifies what type of value follows. The following types are recognized:
+
+#### Primitives
+
+Some types do not need any extra data and are directly complete by their type specifier.
+
+- 0: null
+- 1: false (boolean)
+- 2: true (boolean)
+
+#### Values with extra data
+
+Other types need some more information to be complete.
+
+- 3 to 14: numbers. The type of number can be determined by subtracting 3 from the type value. Let's call this value `x`. The type of the number then follows the following rules.
+  - `x % 2 = 0`: The number is positive.
+  - `x % 2 = 1`: The number is negative.
+  - `x % 4 < 2`: The number is an integer.
+  - `x % 4 >= 2`: The number is a decimal.
+  - `x >= 4 & x < 8`: The number has an exponent, which is positive.
+  - `x >= 8 & x < 12`: The number has an exponent, which is negative.
+
+  Following this first number is a number (size `CC`), which is the integer part of the number.
+  If the number is a decimal, another number follows (size `BB`), which is the decimal part of the number.
+  If the number has an exponent, another number follows (size `II`), which is the exponent of the number.
+- 15: A string, starting with a number (size `EE`) indicating the length of the string, followed by the same number of bytes that form the string.
+- 18: A reference. Contains a number (size `AA`), that indicates the index of the reference.
+
+#### Composite types.
+
+Finally the values that are composed of other values, the information of the contained values is nested in the data.
+
+- 16: An array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of values are encoded.
+- 17: An object.
+  - The first nuber (size `HH`) specifies the index of the object definition, pointing to a value from the object definitions header (1-based).
+  - The definition indicates how many fields there are, the fields are filled in, by order of their index. The same number of values are encoded after the index.
+
+### Remaining data
+
+Every section specifies upfront how long its data is going to be. Parsing will stop after the end of the main value is reached, even if there is data after it. A Jbon value will not be encoded with data after the Json value section, but if data is manually added there, it will be ignored.
