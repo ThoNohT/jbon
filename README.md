@@ -80,15 +80,15 @@ The first byte specifies what type of value follows. The following types are rec
 
 Some types do not need any extra data and are directly complete by their type specifier.
 
-- 0: null
-- 1: false (boolean)
-- 2: true (boolean)
+- 0x0: null
+- 0x1: false (boolean)
+- 0x2: true (boolean)
 
 #### Values with extra data
 
 Other types need some more information to be complete.
 
-- 3 to 14: numbers. The type of number can be determined by subtracting 3 from the type value. Let's call this value `x`. The type of the number then follows the following rules.
+- 0x3 to 0xE: numbers. The type of number can be determined by subtracting 3 from the type value. Let's call this value `x`. The type of the number then follows the following rules.
   - `x % 2 = 0`: The number is positive.
   - `x % 2 = 1`: The number is negative.
   - `x % 4 < 2`: The number is an integer.
@@ -99,16 +99,16 @@ Other types need some more information to be complete.
   Following this first number is a number (size `CC`), which is the integer part of the number.
   If the number is a decimal, another number follows (size `BB`), which is the decimal part of the number.
   If the number has an exponent, another number follows (size `II`), which is the exponent of the number.
-- 15: A string, starting with a number (size `EE`) indicating the length of the string, followed by the same number of bytes that form the string.
-- 18: A reference. Contains a number (size `AA`), that indicates the index of the reference.
+- 0xF: A string, starting with a number (size `EE`) indicating the length of the string, followed by the same number of bytes that form the string.
+- 0x12: A reference. Contains a number (size `AA`), that indicates the index of the reference.
 
 #### Composite types.
 
 Finally the values that are composed of other values, the information of the contained values is nested in the data.
 
-- 16: An array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of values are encoded.
-- 19: A counted array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of numbers (size `FF`) followed by values are encoded. Each pair of number and value indicate this number of times this value consecutively in the array.
-- 17: An object.
+- 0x10: An array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of values are encoded.
+- 0x13: A counted array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of numbers (size `FF`) followed by values are encoded. Each pair of number and value indicate this number of times this value consecutively in the array.
+- 0x11: An object.
   - The first nuber (size `HH`) specifies the index of the object definition, pointing to a value from the object definitions header (1-based).
   - The definition indicates how many fields there are, the fields are filled in, by order of their index. The same number of values are encoded after the index.
 
