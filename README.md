@@ -107,6 +107,7 @@ Other types need some more information to be complete.
 Finally the values that are composed of other values, the information of the contained values is nested in the data.
 
 - 16: An array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of values are encoded.
+- 19: A counted array. The first number (size `FF`) indicates the number of elements in the array. Afer this number, the same number of numbers (size `FF`) followed by values are encoded. Each pair of number and value indicate this number of times this value consecutively in the array.
 - 17: An object.
   - The first nuber (size `HH`) specifies the index of the object definition, pointing to a value from the object definitions header (1-based).
   - The definition indicates how many fields there are, the fields are filled in, by order of their index. The same number of values are encoded after the index.
