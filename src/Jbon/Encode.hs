@@ -5,7 +5,7 @@ module Jbon.Encode (
   settingsToWords,
   wordsToSettings,
   makeSettings,
-  applyReferences,
+  optimize,
   gatherDuplicates,
   countValues,
 ) where
@@ -160,12 +160,38 @@ encodeStr stringLength str =
 
 -- Jbon related encoders
 
+{- | Counts the values of an array, in such a way that all consecutive equal values are combined, with a number that
+ | specifies how many of these values there were.
+-}
+countArray :: [JsonValue] -> [(Word64, JsonValue)]
+countArray = go []
+ where
+  go acc [] = reverse acc
+  go ((c, a) : as) (x : xs)
+    | x == a = go ((c + 1, a) : as) xs
+    | otherwise = go ((1, x) : (c, a) : as) xs
+  go [] (x : xs) = go [(1, x)] xs
+
+-- | Attempts to count all arrays in a json value. Replaces arrays that are smaller as counted arrays.
+countArrays :: EncodingSettings -> JsonValue -> JsonValue
+countArrays settings (JsonArr arr) =
+  let counted = countArray arr
+   in if valueSize settings (JsonCountedArr counted) < valueSize settings (JsonArr arr)
+        then JsonCountedArr $ second (countArrays settings) <$> counted
+        else JsonArr $ countArrays settings <$> arr
+countArrays settings (JsonObj fields) = JsonObj $ second (countArrays settings) <$> fields
+-- Note that JsonCountedArr should not happen, since the contents of a JsonCountedArr are already counted.
+-- So we simply return it if it occurs.
+countArrays _ value = value
+
 -- | Gathers references and updates the settings and value with these references.
-applyReferences :: EncodingSettings -> JsonValue -> (EncodingSettings, Indexed JsonValue, JsonValue)
-applyReferences settings value =
+optimize :: EncodingSettings -> JsonValue -> (EncodingSettings, Indexed JsonValue, JsonValue)
+optimize settings value =
   let (value', refs) = gatherDuplicates settings value
       settings' = settings{numberOfReferences = wordSize $ genericLength refs}
-   in (settings', refs, value')
+      value'' = countArrays settings' value'
+      refs' = second (countArrays settings') <$> refs
+   in (settings', refs', value'')
 
 -- | Encodes a json value to jbon.
 encodeJbon :: Indexed JbonObject -> JsonValue -> BSB.Builder
@@ -173,7 +199,7 @@ encodeJbon objs value' =
   BSB.string8 "JBON" <> settingsHeader <> objsHeader <> refsHeader <> body
  where
   settings' = makeSettings value' objs
-  (settings, refs, value) = applyReferences settings' value'
+  (settings, refs, value) = optimize settings' value'
 
   settingsHeader :: BSB.Builder
   settingsHeader =
@@ -214,21 +240,22 @@ encodeField settings (idx, str) =
 valueTypeNumber :: JsonValue -> BSB.Builder
 valueTypeNumber val = BSB.word8 $
   case val of
-    JsonNull -> 0
-    JsonBool False -> 1
-    JsonBool True -> 2
+    JsonNull -> 0x0
+    JsonBool False -> 0x1
+    JsonBool True -> 0x2
     JsonNum neg num e ->
-      3
-        + numIf neg 1
-        + numIf (isDecimal num) 2
-        + numIf (isJust e) 4
-        + numIf (maybe False expIsNegative e) 4
-    JsonStr _ -> 15
-    JsonArr _ -> 16
-    JsonObj _ -> 17
-    JsonRef _ -> 18
+      0x3
+        + numIf neg 0x1
+        + numIf (isDecimal num) 0x2
+        + numIf (isJust e) 0x4
+        + numIf (maybe False expIsNegative e) 0x4
+    JsonStr _ -> 0xf
+    JsonArr _ -> 0x10
+    JsonCountedArr _ -> 0x13
+    JsonObj _ -> 0x11
+    JsonRef _ -> 0x12
  where
-  numIf cond n = if cond then n else 0
+  numIf cond n = if cond then n else 0x0
 
 -- | Encodes a json number using the provided encoding settings.
 encodejsonNumber :: EncodingSettings -> JsonNumber -> BSB.Builder
@@ -253,6 +280,9 @@ encodeValue settings _ s@(JsonStr str) =
 encodeValue settings objs a@(JsonArr arr) =
   valueTypeNumber a <> encodeLength (arrayLength settings) arr
     <> mconcat (encodeValue settings objs <$> arr)
+encodeValue settings objs a@(JsonCountedArr arr) =
+  valueTypeNumber a <> encodeLength (arrayLength settings) arr
+    <> mconcat ((\(c, v) -> encodeNumber (arrayLength settings) c <> encodeValue settings objs v) <$> arr)
 encodeValue settings objs o@(JsonObj fields) =
   valueTypeNumber o
     <> encodeNumber (numberOfObjects settings) (getObjectId fields objs)
@@ -323,6 +353,9 @@ valueSize settings (JsonStr str) =
 valueSize settings (JsonArr arr) =
   1 + wordSizeNoBytes (arrayLength settings)
     + sum (valueSize settings <$> arr)
+valueSize settings (JsonCountedArr arr) =
+  let wSize = wordSizeNoBytes (arrayLength settings)
+   in 1 + wSize + sum ((\(_, v) -> wSize + valueSize settings v) <$> arr)
 valueSize settings (JsonObj fields) =
   1 + wordSizeNoBytes (numberOfObjects settings)
     + sum (valueSize settings . snd <$> fields)
@@ -336,6 +369,7 @@ countValues = Map.filter (> 1) . go Map.empty
  where
   go :: Map.Map JsonValue Word64 -> JsonValue -> Map.Map JsonValue Word64
   go acc arr@(JsonArr elems) = foldl' go (increment arr acc) elems
+  go acc arr@(JsonCountedArr elems) = foldl' go (increment arr acc) (snd <$> elems)
   go acc obj@(JsonObj fields) = foldl' go (increment obj acc) (snd <$> fields)
   go acc leaf = increment leaf acc
 

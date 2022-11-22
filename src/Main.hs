@@ -8,7 +8,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Formattable (Formattable (..), format)
 import Jbon.Build (getObjectDefinitions)
 import Jbon.Decode (decodeJbonValue)
-import Jbon.Encode (applyReferences, encodeJbon, makeSettings)
+import Jbon.Encode (optimize, encodeJbon, makeSettings)
 import Json.Decode (parseJsonValue)
 import Json.Json (JsonValue)
 import System.Environment (getArgs)
@@ -164,7 +164,7 @@ analyze params = do
 
       let defs = getObjectDefinitions json'
       let settings' = makeSettings json' defs
-      let (settings, refs, json) = applyReferences settings' json'
+      let (settings, refs, json) = optimize settings' json'
 
       let outStr =
             unwords

@@ -81,11 +81,11 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
 
   jsonNumber :: Word8 -> EncodingSettings -> Parser ByteString JsonValue
   jsonNumber nVal' settings = do
-    let nVal = nVal' - 3
-    let hasExponent = nVal >= 4
-    let expIsNegative = nVal >= 8
-    let isDecimal = (nVal `mod` 4) >= 2
-    let isNegative = (nVal `mod` 2) == 1
+    let nVal = nVal' - 0x3
+    let hasExponent = nVal >= 0x4
+    let expIsNegative = nVal >= 0x8
+    let isDecimal = (nVal `mod` 0x4) >= 0x2
+    let isNegative = (nVal `mod` 0x2) == 0x1
 
     int <- parseNumber "int" (intSize settings)
     dec <-
@@ -105,19 +105,28 @@ decodeJbonValue input = fst <$> runParser jbonDocument input
   jsonValue settings objects = pWord8 "Value type id" >>= go
    where
     go :: Word8 -> Parser ByteString JsonValue
-    go 0 = pure JsonNull
-    go 1 = pure $ JsonBool False
-    go 2 = pure $ JsonBool True
-    go n | n >= 3 && n <= 14 = jsonNumber n settings
-    go 15 = JsonStr <$> parseString "Json string" (stringLength settings)
-    go 16 = do
+    go 0x0 = pure JsonNull
+    go 0x1 = pure $ JsonBool False
+    go 0x2 = pure $ JsonBool True
+    go n | n >= 0x3 && n <= 0xe = jsonNumber n settings
+    go 0xf = JsonStr <$> parseString "Json string" (stringLength settings)
+    go 0x10 = do
       arrLen <- parseNumber "Array length" (arrayLength settings)
       JsonArr <$> withError "Array" (replicateM (fromIntegral arrLen) (jsonValue settings objects))
-    go 17 = do
+    go 0x13 = do
+      arrLen <- parseNumber "Counted array length" (arrayLength settings)
+      JsonCountedArr
+        <$> withError
+          "Counted array"
+          ( replicateM
+              (fromIntegral arrLen)
+              ((,) <$> parseNumber "Array item count" (arrayLength settings) <*> jsonValue settings objects)
+          )
+    go 0x11 = do
       objIndex <- parseNumber "Object index" (numberOfObjects settings)
       JbonObject _ _ fields <- liftP "Finding object by index" $ index objIndex objects
       JsonObj <$> mapM (\n -> (n,) <$> jsonValue settings objects) fields
-    go 18 = do
+    go 0x12 = do
       refIndex <- parseNumber "Reference index" (numberOfReferences settings)
       pure $ JsonRef refIndex
     go i = withError ("Unknown element " <> show i) empty

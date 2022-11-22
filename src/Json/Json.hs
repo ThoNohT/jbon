@@ -15,7 +15,7 @@ module Json.Json (
 
 import Core (safeMaximum)
 import Data.Bifunctor (Bifunctor (second))
-import Data.List (genericLength, intercalate, intersperse)
+import Data.List (genericLength, genericReplicate, intercalate, intersperse)
 import Data.Word (Word64)
 import Formattable (Formattable (..), format', indent, unlines')
 import Indexed (Indexed, index)
@@ -49,6 +49,7 @@ data JsonValue where
   JsonNum :: Bool -> JsonNumber -> Maybe JsonExponent -> JsonValue
   JsonStr :: String -> JsonValue
   JsonArr :: [JsonValue] -> JsonValue
+  JsonCountedArr :: [(Word64, JsonValue)] -> JsonValue
   JsonObj :: [(String, JsonValue)] -> JsonValue
   -- This value cannot be parsed, only created by making references for duplicate values.
   JsonRef :: Word64 -> JsonValue
@@ -59,6 +60,7 @@ maxStringLength :: JsonValue -> Word64
 maxStringLength = \case
   JsonStr str -> genericLength str
   JsonArr arr -> safeMaximum $ maxStringLength <$> arr
+  JsonCountedArr arr -> safeMaximum $ maxStringLength . snd <$> arr
   JsonObj objs -> safeMaximum $ maxStringLength . snd <$> objs
   _ -> 0
 
@@ -66,6 +68,7 @@ maxStringLength = \case
 maxArrayLength :: JsonValue -> Word64
 maxArrayLength = \case
   JsonArr arr -> max (genericLength arr) (safeMaximum $ maxArrayLength <$> arr)
+  JsonCountedArr arr -> max (genericLength arr) (safeMaximum $ maxArrayLength . snd <$> arr)
   JsonObj objs -> safeMaximum $ maxArrayLength . snd <$> objs
   _ -> 0
 
@@ -74,7 +77,8 @@ maxInt :: JsonValue -> Word64
 maxInt = \case
   JsonNum _ (JsonInt i) _ -> i
   JsonNum _ (JsonDecimal i _) _ -> i
-  JsonArr arr -> (safeMaximum $ maxInt <$> arr)
+  JsonArr arr -> safeMaximum $ maxInt <$> arr
+  JsonCountedArr arr -> safeMaximum $ maxInt . snd <$> arr
   JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
   _ -> 0
 
@@ -82,7 +86,7 @@ maxInt = \case
 maxDecimal :: JsonValue -> Word64
 maxDecimal = \case
   JsonNum _ (JsonDecimal _ d) _ -> d
-  JsonArr arr -> (safeMaximum $ maxInt <$> arr)
+  JsonArr arr -> safeMaximum $ maxInt <$> arr
   JsonObj objs -> safeMaximum $ maxInt . snd <$> objs
   _ -> 0
 
@@ -90,7 +94,8 @@ maxDecimal = \case
 maxExponent :: JsonValue -> Word64
 maxExponent = \case
   JsonNum _ _ (Just (JsonExponent _ e)) -> e
-  JsonArr arr -> (safeMaximum $ maxExponent <$> arr)
+  JsonArr arr -> safeMaximum $ maxExponent <$> arr
+  JsonCountedArr arr -> safeMaximum $ maxExponent . snd <$> arr
   JsonObj objs -> safeMaximum $ maxExponent . snd <$> objs
   _ -> 0
 
@@ -100,6 +105,7 @@ replaceValue toReplace replaceWith replaceIn =
   case replaceIn of
     _ | replaceIn == toReplace -> replaceWith
     JsonArr arr -> JsonArr $ replaceValue toReplace replaceWith <$> arr
+    JsonCountedArr arr -> JsonCountedArr $ second (replaceValue toReplace replaceWith) <$> arr
     JsonObj fields -> JsonObj $ second (replaceValue toReplace replaceWith) <$> fields
     v -> v
 
@@ -107,17 +113,21 @@ replaceValue toReplace replaceWith replaceIn =
  | Returns Nothing if any reference could not be found.
 -}
 expandJsonValue :: Indexed JsonValue -> JsonValue -> Maybe JsonValue
-expandJsonValue refs (JsonRef idx) = index idx refs >>= (\v -> if hasRefs v then expandJsonValue refs v else Just v)
+expandJsonValue refs (JsonRef idx) = index idx refs >>= (\v -> if mustExpand v then expandJsonValue refs v else Just v)
 expandJsonValue refs (JsonArr arr) = JsonArr <$> mapM (expandJsonValue refs) arr
+expandJsonValue refs (JsonCountedArr arr) = JsonArr . concat <$> mapM expandSingle arr
+ where
+  expandSingle (c, v) = genericReplicate c <$> expandJsonValue refs v
 expandJsonValue refs (JsonObj fields) = JsonObj <$> mapM (\(n, v) -> (n,) <$> expandJsonValue refs v) fields
 expandJsonValue _ v = Just v
 
--- | Indicates whether a json value has references.
-hasRefs :: JsonValue -> Bool
-hasRefs (JsonRef _) = True
-hasRefs (JsonArr arr) = any hasRefs arr
-hasRefs (JsonObj fields) = any hasRefs (snd <$> fields)
-hasRefs _ = False
+-- | Indicates whether a json value has references or a counted array, and therefore needs expanding.
+mustExpand :: JsonValue -> Bool
+mustExpand (JsonRef _) = True
+mustExpand (JsonArr arr) = any mustExpand arr
+mustExpand (JsonCountedArr _) = True
+mustExpand (JsonObj fields) = any mustExpand (snd <$> fields)
+mustExpand _ = False
 
 -- Formatting
 
@@ -145,6 +155,7 @@ instance Formattable JsonValue where
     if negative then 1 else 0 + formattedLength num + maybe 0 formattedLength e
   formattedLength (JsonStr str) = genericLength str + 2
   formattedLength (JsonArr arr) = 4 + sum (intersperse 3 $ formattedLength <$> arr)
+  formattedLength (JsonCountedArr arr) = 4 + sum (intersperse 3 $ (\(c, v) -> 3 + genericLength (show c) + formattedLength v) <$> arr)
   formattedLength (JsonRef idx) = genericLength (show idx) + 6
   formattedLength (JsonObj fields) = 4 + sum (intersperse 3 $ fieldLength <$> fields)
    where
@@ -157,6 +168,8 @@ instance Formattable JsonValue where
   formatSingleLine (JsonStr str) = "\"" <> str <> "\""
   formatSingleLine (JsonRef idx) = "<<" <> show idx <> ">>"
   formatSingleLine (JsonArr arr) = "[ " <> intercalate ", " (formatSingleLine <$> arr) <> " ]"
+  formatSingleLine (JsonCountedArr arr) =
+    "[ " <> intercalate ", " ((\(c, v) -> "(" <> show c <> "," <> formatSingleLine v <> ")") <$> arr) <> " ]"
   formatSingleLine (JsonObj fields) =
     "{ " <> intercalate ", " ((\(n, v) -> "\"" <> n <> "\": " <> formatSingleLine v) <$> fields) <> " }"
 
@@ -167,6 +180,15 @@ instance Formattable JsonValue where
         unlines'
           [ "["
           , (unlines' $ commaSeparate [] 1 (format' (idnt + 1) (idnt * 2) maxLen <$> arr)) :: String
+          , "]"
+          ]
+  formatMultiline a@(JsonCountedArr arr) = Just $ \idnt start maxLen ->
+    if formattedLength a + fromIntegral start <= maxLen
+      then formatSingleLine a
+      else
+        unlines'
+          [ "["
+          , (unlines' $ commaSeparate [] 1 ((\(c, v) -> "(" <> show c <> "," <> format' (idnt + 1) (idnt * 2) maxLen v <> ")") <$> arr)) :: String
           , "]"
           ]
   formatMultiline o@(JsonObj fields) = Just $ \idnt start maxLen ->
